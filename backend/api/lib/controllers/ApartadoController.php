@@ -3,7 +3,7 @@
 class ApartadoController
 {
     const DIAS_LIMITE = 7;
-    const FORMAS_ANTICIPO = ['efectivo', 'tdc', 'tdb', 'transferencia', 'tarjeta', 'cheque', 'otro'];
+    const FORMAS_ANTICIPO = ['efectivo', 'tdc', 'tdb', 'transferencia', 'cheque'];
 
     /** Reserva (delta > 0) o libera (delta < 0) stock en la celda; al reservar valida el disponible */
     private static function reservar(int $emp, int $idArt, ?int $v1, ?int $v2, int $idAlm, float $delta, string $codigo = ''): void
@@ -162,12 +162,15 @@ class ApartadoController
         $forma = (string) ($b['forma'] ?? 'efectivo');
         if ($importe <= 0) throw new ApiError('El importe debe ser mayor a cero', 400, 'VALIDATION');
         if (!in_array($forma, self::FORMAS_ANTICIPO, true)) throw new ApiError('Forma de pago no valida', 400, 'VALIDATION');
+        [$idBanco, $idTerminal] = Cobros::destino($forma, $b['id_banco'] ?? null, $b['id_terminal'] ?? null);
         Db::begin();
         $a = self::bloquear($id, ['vigente', 'con_anticipo'], 'El apartado no admite anticipos');
         $restante = round((float) $a['total'] - (float) $a['anticipo'], 2);
         if ($importe > $restante + 0.0001) throw new ApiError("El anticipo excede el saldo restante ($restante)", 400, 'VALIDATION');
-        Db::insert('INSERT INTO apartado_anticipos (id_empresa, id_apartado, fecha, forma, importe, id_usuario) VALUES (?,?,NOW(),?,?,?)',
-            [$emp, $id, $forma, $importe, $ctx['user']['id']]);
+        $antId = Db::insert('INSERT INTO apartado_anticipos (id_empresa, id_apartado, fecha, forma, id_banco, id_terminal, importe, id_usuario) VALUES (?,?,NOW(),?,?,?,?,?)',
+            [$emp, $id, $forma, $idBanco, $idTerminal, $importe, $ctx['user']['id']]);
+        // el anticipo entra a la caja / cuenta el dia que se cobra (al liquidar ya no vuelve a contarse)
+        Cobros::entrada($emp, $forma, $importe, $idBanco, $idTerminal, (int) $a['id_almacen'], 'Anticipo apartado ' . $a['folio'], 'Apartado', $id, $ctx['user']['id']);
         Db::run("UPDATE apartados SET anticipo = anticipo + ?, estado = 'con_anticipo' WHERE id = ? AND id_empresa = ?", [$importe, $id, $emp]);
         Db::commit();
         Ledger::audit($ctx, 'anticipo', 'Apartado', $id, 'Anticipo ' . $importe);

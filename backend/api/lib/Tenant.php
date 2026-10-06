@@ -30,7 +30,7 @@ class Tenant
     const TABLAS = [
         'almacenes', 'users', 'familias', 'lineas', 'cortes_catalogo', 'marcas', 'conceptos_gasto',
         'atributos', 'atributo_valores', 'categorias', 'articulos', 'empleados', 'clientes', 'proveedores',
-        'bancos', 'inventario', 'ventas', 'compras', 'traspasos', 'apartados', 'devoluciones', 'cambios',
+        'bancos', 'terminales', 'inventario', 'ventas', 'compras', 'traspasos', 'apartados', 'devoluciones', 'cambios',
         'comisiones', 'cortes',
     ];
 

@@ -51,11 +51,31 @@ class Ledger
             [$emp, $idProveedor, $tipo, $concepto, round($monto, 2), $moneda, $idBanco, $refTipo, $idRef]);
     }
 
-    /** Ajusta el saldo de un banco (si aplica). delta con signo. */
-    public static function bancoDelta(int $emp, ?int $idBanco, float $delta): void
+    /**
+     * Movimiento de una cuenta bancaria. Registra el libro (banco_movimientos) y ajusta bancos.saldo_actual.
+     * $tipo 'ingreso' | 'egreso'; $monto siempre positivo. $idAlmacen = tienda donde se cobro/pago (para el corte).
+     */
+    public static function bancoMov(int $emp, int $idBanco, string $tipo, float $monto, string $concepto, ?string $forma = null,
+        ?int $idTerminal = null, ?int $idAlmacen = null, ?string $refTipo = null, ?int $idRef = null, ?int $idUser = null): void
     {
-        if (!$idBanco) return;
-        Db::run('UPDATE bancos SET saldo_actual=saldo_actual+? WHERE id=? AND id_empresa=?', [round($delta, 2), $idBanco, $emp]);
+        $monto = round($monto, 2);
+        if ($monto <= 0) return;
+        Db::insert('INSERT INTO banco_movimientos (id_empresa, id_banco, fecha, tipo, monto, forma, id_terminal, id_almacen, concepto, ref_tipo, id_referencia, id_usuario)
+                    VALUES (?,?,NOW(),?,?,?,?,?,?,?,?,?)',
+            [$emp, $idBanco, $tipo, $monto, $forma, $idTerminal, $idAlmacen, $concepto, $refTipo, $idRef, $idUser]);
+        Db::run('UPDATE bancos SET saldo_actual = saldo_actual + ? WHERE id = ? AND id_empresa = ?',
+            [$tipo === 'ingreso' ? $monto : -$monto, $idBanco, $emp]);
+    }
+
+    /** Movimiento del efectivo de un almacen (caja). El corte de caja se calcula con este libro. */
+    public static function cajaMov(int $emp, int $idAlmacen, string $tipo, float $monto, string $concepto,
+        ?string $refTipo = null, ?int $idRef = null, ?int $idUser = null): void
+    {
+        $monto = round($monto, 2);
+        if ($monto <= 0) return;
+        Db::insert('INSERT INTO caja_movimientos (id_empresa, id_almacen, fecha, tipo, monto, concepto, ref_tipo, id_referencia, id_usuario)
+                    VALUES (?,?,NOW(),?,?,?,?,?,?)',
+            [$emp, $idAlmacen, $tipo, $monto, $concepto, $refTipo, $idRef, $idUser]);
     }
 
     /** Registra una entrada en la bitacora. Nunca lanza (best-effort). */

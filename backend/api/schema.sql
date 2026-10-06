@@ -445,12 +445,73 @@ CREATE TABLE bancos (
   moneda       ENUM('MXN','USD') NOT NULL DEFAULT 'MXN',
   cuenta       VARCHAR(60) DEFAULT NULL,
   clabe        VARCHAR(40) DEFAULT NULL,
-  saldo_actual DECIMAL(14,2) NOT NULL DEFAULT 0,   -- acumulado de sus movimientos (solo via Ledger)
+  saldo_actual DECIMAL(14,2) NOT NULL DEFAULT 0,   -- = suma de banco_movimientos (solo via Ledger)
   is_active    ENUM('Si','No') NOT NULL DEFAULT 'Si',
   created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_banco_emp_id (id_empresa, id),
   CONSTRAINT fk_banco_emp FOREIGN KEY (id_empresa) REFERENCES empresas(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Terminales de cobro con tarjeta (TDC/TDB). Cada una deposita en una cuenta bancaria de la tienda.
+CREATE TABLE terminales (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  id_empresa   INT NOT NULL,
+  nombre       VARCHAR(80) NOT NULL,
+  proveedor    VARCHAR(60) DEFAULT NULL,       -- Clip, Getnet, Mercado Pago, ...
+  id_banco     INT NOT NULL,                   -- cuenta donde se depositan los cobros
+  comision_pct DECIMAL(5,2) NOT NULL DEFAULT 0,
+  is_active    ENUM('Si','No') NOT NULL DEFAULT 'Si',
+  created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_term_emp_id (id_empresa, id),
+  CONSTRAINT fk_term_emp   FOREIGN KEY (id_empresa) REFERENCES empresas(id) ON DELETE RESTRICT,
+  CONSTRAINT fk_term_banco FOREIGN KEY (id_empresa, id_banco) REFERENCES bancos(id_empresa, id) ON DELETE RESTRICT,
+  CONSTRAINT chk_term_com CHECK (comision_pct >= 0 AND comision_pct < 100)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Libro de cada cuenta bancaria: bancos.saldo_actual = suma de sus movimientos (solo via Ledger).
+CREATE TABLE banco_movimientos (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  id_empresa    INT NOT NULL,
+  id_banco      INT NOT NULL,
+  fecha         DATETIME NOT NULL,
+  tipo          ENUM('ingreso','egreso') NOT NULL,
+  monto         DECIMAL(14,2) NOT NULL,
+  forma         VARCHAR(20) DEFAULT NULL,
+  id_terminal   INT DEFAULT NULL,
+  id_almacen    INT DEFAULT NULL,              -- tienda donde se cobro / pago (para el corte)
+  concepto      VARCHAR(200) DEFAULT NULL,
+  ref_tipo      VARCHAR(30) DEFAULT NULL,
+  id_referencia INT DEFAULT NULL,
+  id_usuario    INT DEFAULT NULL,
+  created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_bmov_banco (id_empresa, id_banco, fecha),
+  KEY idx_bmov_alm (id_empresa, id_almacen, fecha),
+  CONSTRAINT fk_bmov_banco FOREIGN KEY (id_empresa, id_banco) REFERENCES bancos(id_empresa, id) ON DELETE RESTRICT,
+  CONSTRAINT fk_bmov_term  FOREIGN KEY (id_empresa, id_terminal) REFERENCES terminales(id_empresa, id) ON DELETE RESTRICT,
+  CONSTRAINT fk_bmov_alm   FOREIGN KEY (id_empresa, id_almacen) REFERENCES almacenes(id_empresa, id) ON DELETE RESTRICT,
+  CONSTRAINT fk_bmov_user  FOREIGN KEY (id_empresa, id_usuario) REFERENCES users(id_empresa, id) ON DELETE RESTRICT,
+  CONSTRAINT chk_bmov_monto CHECK (monto > 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Libro del efectivo de cada almacen (caja). El corte de caja sale de aqui.
+CREATE TABLE caja_movimientos (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  id_empresa    INT NOT NULL,
+  id_almacen    INT NOT NULL,
+  fecha         DATETIME NOT NULL,
+  tipo          ENUM('ingreso','egreso') NOT NULL,
+  monto         DECIMAL(14,2) NOT NULL,
+  concepto      VARCHAR(200) DEFAULT NULL,
+  ref_tipo      VARCHAR(30) DEFAULT NULL,
+  id_referencia INT DEFAULT NULL,
+  id_usuario    INT DEFAULT NULL,
+  created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_cmov_alm (id_empresa, id_almacen, fecha),
+  CONSTRAINT fk_cmov_alm  FOREIGN KEY (id_empresa, id_almacen) REFERENCES almacenes(id_empresa, id) ON DELETE RESTRICT,
+  CONSTRAINT fk_cmov_user FOREIGN KEY (id_empresa, id_usuario) REFERENCES users(id_empresa, id) ON DELETE RESTRICT,
+  CONSTRAINT chk_cmov_monto CHECK (monto > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ============================================================
@@ -584,10 +645,12 @@ CREATE TABLE venta_pagos (
   forma      VARCHAR(20) NOT NULL,
   importe    DECIMAL(12,2) NOT NULL DEFAULT 0,
   id_banco   INT DEFAULT NULL,
+  id_terminal INT DEFAULT NULL,           -- TDC/TDB: terminal con la que se cobro (deposita en id_banco)
   referencia VARCHAR(80) DEFAULT NULL,
   KEY idx_vp_venta (id_empresa, id_venta),
   CONSTRAINT fk_vp_venta FOREIGN KEY (id_empresa, id_venta) REFERENCES ventas(id_empresa, id) ON DELETE CASCADE,
-  CONSTRAINT fk_vp_banco FOREIGN KEY (id_empresa, id_banco) REFERENCES bancos(id_empresa, id) ON DELETE RESTRICT
+  CONSTRAINT fk_vp_banco FOREIGN KEY (id_empresa, id_banco) REFERENCES bancos(id_empresa, id) ON DELETE RESTRICT,
+  CONSTRAINT fk_vp_term FOREIGN KEY (id_empresa, id_terminal) REFERENCES terminales(id_empresa, id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ============================================================
@@ -720,13 +783,18 @@ CREATE TABLE cliente_movimientos (
   efecto        ENUM('cargo','abono','info') NOT NULL DEFAULT 'info',
   moneda        VARCHAR(5) NOT NULL DEFAULT 'MXN',
   id_banco      INT DEFAULT NULL,
+  forma         VARCHAR(20) DEFAULT NULL,
+  id_terminal   INT DEFAULT NULL,
+  id_almacen    INT DEFAULT NULL,      -- caja donde se recibio un abono en efectivo
   anulado       TINYINT(1) NOT NULL DEFAULT 0,
   ref_tipo      VARCHAR(30) DEFAULT NULL,
   id_referencia INT DEFAULT NULL,
   created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
   KEY idx_climov_cli (id_empresa, id_cliente, fecha),
   CONSTRAINT fk_climov_cli   FOREIGN KEY (id_empresa, id_cliente) REFERENCES clientes(id_empresa, id) ON DELETE RESTRICT,
-  CONSTRAINT fk_climov_banco FOREIGN KEY (id_empresa, id_banco) REFERENCES bancos(id_empresa, id) ON DELETE RESTRICT
+  CONSTRAINT fk_climov_banco FOREIGN KEY (id_empresa, id_banco) REFERENCES bancos(id_empresa, id) ON DELETE RESTRICT,
+  CONSTRAINT fk_climov_term FOREIGN KEY (id_empresa, id_terminal) REFERENCES terminales(id_empresa, id) ON DELETE RESTRICT,
+  CONSTRAINT fk_climov_alm  FOREIGN KEY (id_empresa, id_almacen) REFERENCES almacenes(id_empresa, id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE monedero_movimientos (
@@ -753,12 +821,15 @@ CREATE TABLE proveedor_movimientos (
   monto         DECIMAL(14,2) NOT NULL DEFAULT 0,
   moneda        VARCHAR(5) NOT NULL DEFAULT 'MXN',
   id_banco      INT DEFAULT NULL,
+  forma         VARCHAR(20) DEFAULT NULL,
+  id_almacen    INT DEFAULT NULL,      -- caja de la que salio un pago en efectivo
   ref_tipo      VARCHAR(30) DEFAULT NULL,
   id_referencia INT DEFAULT NULL,
   created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
   KEY idx_provmov_prov (id_empresa, id_proveedor, fecha),
   CONSTRAINT fk_provmov_prov  FOREIGN KEY (id_empresa, id_proveedor) REFERENCES proveedores(id_empresa, id) ON DELETE RESTRICT,
-  CONSTRAINT fk_provmov_banco FOREIGN KEY (id_empresa, id_banco) REFERENCES bancos(id_empresa, id) ON DELETE RESTRICT
+  CONSTRAINT fk_provmov_banco FOREIGN KEY (id_empresa, id_banco) REFERENCES bancos(id_empresa, id) ON DELETE RESTRICT,
+  CONSTRAINT fk_provmov_alm FOREIGN KEY (id_empresa, id_almacen) REFERENCES almacenes(id_empresa, id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ============================================================
@@ -820,12 +891,16 @@ CREATE TABLE apartado_anticipos (
   id_apartado INT NOT NULL,
   fecha       DATETIME NOT NULL,
   forma       VARCHAR(20) NOT NULL DEFAULT 'efectivo',
+  id_banco    INT DEFAULT NULL,
+  id_terminal INT DEFAULT NULL,
   importe     DECIMAL(12,2) NOT NULL DEFAULT 0,
   id_usuario  INT DEFAULT NULL,
   KEY idx_apta_apt (id_empresa, id_apartado),
   CONSTRAINT fk_apta_apt  FOREIGN KEY (id_empresa, id_apartado) REFERENCES apartados(id_empresa, id) ON DELETE CASCADE,
   CONSTRAINT fk_apta_user FOREIGN KEY (id_empresa, id_usuario) REFERENCES users(id_empresa, id) ON DELETE RESTRICT,
-  CONSTRAINT chk_apta_imp CHECK (importe > 0)
+  CONSTRAINT chk_apta_imp CHECK (importe > 0),
+  CONSTRAINT fk_apta_banco FOREIGN KEY (id_empresa, id_banco) REFERENCES bancos(id_empresa, id) ON DELETE RESTRICT,
+  CONSTRAINT fk_apta_term  FOREIGN KEY (id_empresa, id_terminal) REFERENCES terminales(id_empresa, id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE devoluciones (
@@ -883,6 +958,9 @@ CREATE TABLE cambios (
   total_nuevo     DECIMAL(14,2) NOT NULL DEFAULT 0,
   diferencia      DECIMAL(14,2) NOT NULL DEFAULT 0,
   pago_diferencia DECIMAL(14,2) NOT NULL DEFAULT 0,
+  forma_diferencia VARCHAR(20) DEFAULT NULL,
+  id_banco        INT DEFAULT NULL,
+  id_terminal     INT DEFAULT NULL,
   id_usuario      INT DEFAULT NULL,
   created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uq_camb_emp_id (id_empresa, id),
@@ -892,7 +970,9 @@ CREATE TABLE cambios (
   CONSTRAINT fk_camb_venta FOREIGN KEY (id_empresa, id_venta) REFERENCES ventas(id_empresa, id) ON DELETE RESTRICT,
   CONSTRAINT fk_camb_cli   FOREIGN KEY (id_empresa, id_cliente) REFERENCES clientes(id_empresa, id) ON DELETE RESTRICT,
   CONSTRAINT fk_camb_alm   FOREIGN KEY (id_empresa, id_almacen) REFERENCES almacenes(id_empresa, id) ON DELETE RESTRICT,
-  CONSTRAINT fk_camb_user  FOREIGN KEY (id_empresa, id_usuario) REFERENCES users(id_empresa, id) ON DELETE RESTRICT
+  CONSTRAINT fk_camb_user  FOREIGN KEY (id_empresa, id_usuario) REFERENCES users(id_empresa, id) ON DELETE RESTRICT,
+  CONSTRAINT fk_camb_banco FOREIGN KEY (id_empresa, id_banco) REFERENCES bancos(id_empresa, id) ON DELETE RESTRICT,
+  CONSTRAINT fk_camb_term  FOREIGN KEY (id_empresa, id_terminal) REFERENCES terminales(id_empresa, id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE cambio_lineas (
@@ -1023,7 +1103,7 @@ INSERT INTO modulo_acciones (modulo, accion, nombre) VALUES
   ('traspasos','ver','Ver'), ('traspasos','crear','Crear'), ('traspasos','editar','Editar'), ('traspasos','aprobar','Aceptar / rechazar'),
   ('compras','ver','Ver'), ('compras','crear','Crear'), ('compras','editar','Editar'), ('compras','eliminar','Cancelar'),
   ('compras','aprobar','Aprobar'), ('compras','pagar','Registrar pagos'),
-  ('finanzas','ver','Ver'), ('finanzas','crear','Registrar abonos y pagos'), ('finanzas','editar','Administrar bancos'),
+  ('finanzas','ver','Ver'), ('finanzas','crear','Registrar abonos, pagos y depositos'), ('finanzas','editar','Administrar cuentas y terminales'),
   ('comisiones','ver','Ver'), ('comisiones','pagar','Marcar pagadas'),
   ('reportes','ver','Ver'), ('reportes','costos','Ver costos y utilidad'),
   ('facturacion','ver','Ver'), ('facturacion','crear','Facturar'),

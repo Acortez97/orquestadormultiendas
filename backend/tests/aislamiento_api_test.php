@@ -49,6 +49,7 @@ $playeraB = array_values(array_filter($artsB, fn($a) => $a['codigo'] === 'ROP-00
 $simpleB  = array_values(array_filter($artsB, fn($a) => $a['codigo'] === 'GEN-00001'))[0];
 $colB = $playeraB['colores'][0]['_id']; $talB = $playeraB['tallas'][0]['_id'];
 $bancoB = ok('B lista bancos', api('GET', '/finanzas/bancos', null, $tB))[0]['_id'];
+$terminalB = ok('B lista terminales', api('GET', '/finanzas/terminales', null, $tB))[0]['_id'];
 $cats = ok('B lista categorias', api('GET', '/categorias', null, $tB));
 $catB = $cats[0]['_id'];
 $atrB = ok('B lista atributos', api('GET', '/atributos', null, $tB))[0];
@@ -64,7 +65,7 @@ $cliB = $cliB['_id'];
 $compra = ok('B crea compra', api('POST', '/compras', ['id_proveedor' => $provB, 'id_almacen' => $principalB, 'aplica_iva' => true,
     'lineas' => [['id_articulo' => $playeraB['_id'], 'id_color' => $colB, 'id_talla' => $talB, 'cantidad' => 5, 'costo_unitario' => 70]]], $tB), 201);
 check('Folio de compra de B empieza en 1', $compra['folio'] === 'C-00001', $compra['folio'] ?? '');
-ok('B paga anticipo de la compra antes de aprobar', api('POST', "/compras/{$compra['_id']}/pagos", ['importe' => 100, 'id_banco' => $bancoB], $tB), 201);
+ok('B paga anticipo de la compra antes de aprobar', api('POST', "/compras/{$compra['_id']}/pagos", ['importe' => 100, 'forma_pago' => 'transferencia', 'id_banco' => $bancoB], $tB), 201);
 ok('B aprueba compra (entra stock + CxP)', api('PATCH', "/compras/{$compra['_id']}/aprobar", null, $tB));
 $tras = ok('B crea traspaso a bodega', api('POST', '/almacen/traspasos', ['id_almacen_origen' => $principalB, 'id_almacen_destino' => $bodegaB,
     'lineas' => [['id_articulo' => $playeraB['_id'], 'id_color' => $colB, 'id_talla' => $talB, 'cantidad' => 2]]], $tB), 201);
@@ -91,8 +92,8 @@ $camb = ok('B registra cambio', api('POST', '/devoluciones/cambios', ['folio_ven
     'lineas_devueltas' => [['id_articulo' => $playeraB['_id'], 'id_color' => $colB, 'id_talla' => $talB, 'cantidad' => 1]],
     'lineas_nuevas' => [['id_articulo' => $simpleB['_id'], 'cantidad' => 1, 'precio_unitario' => 0.01]]], $tB), 201);
 check('Lo nuevo del cambio se cotizo en el servidor', $camb['total_nuevo'] > 1, (string) ($camb['total_nuevo'] ?? ''));
-ok('B abona a CxC', api('POST', '/finanzas/cuentas-cliente/abono', ['id_cliente' => $cliB, 'monto' => 50, 'id_banco' => $bancoB], $tB), 201);
-ok('B paga a proveedor (CxP)', api('POST', '/finanzas/cuentas-proveedor/pago', ['id_proveedor' => $provB, 'monto' => 20, 'id_banco' => $bancoB], $tB), 201);
+ok('B abona a CxC', api('POST', '/finanzas/cuentas-cliente/abono', ['id_cliente' => $cliB, 'monto' => 50, 'forma' => 'transferencia', 'id_banco' => $bancoB, 'id_almacen' => $principalB], $tB), 201);
+ok('B paga a proveedor (CxP)', api('POST', '/finanzas/cuentas-proveedor/pago', ['id_proveedor' => $provB, 'monto' => 20, 'forma' => 'transferencia', 'id_banco' => $bancoB], $tB), 201);
 ok('B ajusta monedero', api('POST', '/monedero/ajuste', ['id_cliente' => $cliB, 'importe' => 15], $tB), 201);
 $comis = ok('B lista comisiones', api('GET', '/comisiones', null, $tB));
 check('La venta con vendedor genero comision', count($comis) === 1 && $comis[0]['folio_venta'] === $ventaB['folio']);
@@ -137,7 +138,7 @@ function fotoB(int $emp): string
     $partes = [];
     foreach (['almacenes', 'articulos', 'inventario', 'inventario_movimientos', 'clientes', 'proveedores', 'empleados', 'ventas', 'venta_lineas',
               'venta_pagos', 'compras', 'compra_lineas', 'traspasos', 'apartados', 'devoluciones', 'cambios', 'cliente_movimientos',
-              'monedero_movimientos', 'proveedor_movimientos', 'bancos', 'comisiones', 'cortes', 'users', 'user_permisos', 'categorias',
+              'monedero_movimientos', 'proveedor_movimientos', 'bancos', 'banco_movimientos', 'caja_movimientos', 'terminales', 'comisiones', 'cortes', 'users', 'user_permisos', 'categorias',
               'atributos', 'atributo_valores', 'marcas', 'folio_series'] as $t) {
         $rows = Db::all("SELECT * FROM `$t` WHERE id_empresa = ?", [$emp]);
         foreach ($rows as &$r) { unset($r['updated_at'], $r['ultimo_acceso']); } unset($r);
@@ -200,7 +201,10 @@ $usos = [
     'Venta con vendedor de B'        => ['POST', '/ventas', ['id_almacen' => $principalA, 'id_vendedor' => $emplB, 'lineas' => $lineaA, 'pagos' => $pagoA, 'destino_cambio' => 'efectivo']],
     'Venta de articulo de B'         => ['POST', '/ventas', ['id_almacen' => $principalA, 'lineas' => [['id_articulo' => $simpleB['_id'], 'cantidad' => 1]], 'pagos' => $pagoA, 'destino_cambio' => 'efectivo']],
     'Venta con variante de B'        => ['POST', '/ventas', ['id_almacen' => $principalA, 'lineas' => [['id_articulo' => $playeraA['_id'], 'id_color' => $colB, 'id_talla' => $talB, 'cantidad' => 1]], 'pagos' => $pagoA, 'destino_cambio' => 'efectivo']],
-    'Pago a banco de B'              => ['POST', '/ventas', ['id_almacen' => $principalA, 'lineas' => $lineaA, 'pagos' => [['forma' => 'tdc', 'importe' => 1000, 'id_banco' => $bancoB]], 'destino_cambio' => 'efectivo']],
+    'Transferencia a cuenta de B'    => ['POST', '/ventas', ['id_almacen' => $principalA, 'lineas' => $lineaA, 'pagos' => [['forma' => 'transferencia', 'importe' => 1000, 'id_banco' => $bancoB]], 'destino_cambio' => 'efectivo']],
+    'Cobro con terminal de B'        => ['POST', '/ventas', ['id_almacen' => $principalA, 'lineas' => $lineaA, 'pagos' => [['forma' => 'tdc', 'importe' => 1000, 'id_terminal' => $terminalB]], 'destino_cambio' => 'efectivo']],
+    'Deposito a cuenta de B'         => ['POST', "/finanzas/bancos/$bancoB/movimientos", ['tipo' => 'deposito', 'monto' => 1, 'id_almacen' => $principalA]],
+    'Leer la caja de un almacen de B' => ['GET', "/finanzas/cajas/$principalB/movimientos", null],
     'Cotizar con cliente de B'       => ['POST', '/ventas/cotizar', ['id_cliente' => $cliB, 'lineas' => $lineaA]],
     'Compra a proveedor de B'        => ['POST', '/compras', ['id_proveedor' => $provB, 'id_almacen' => $principalA, 'lineas' => $lineaA]],
     'Traspaso hacia almacen de B'    => ['POST', '/almacen/traspasos', ['id_almacen_origen' => $principalA, 'id_almacen_destino' => $principalB, 'lineas' => $lineaA]],

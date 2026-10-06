@@ -2,7 +2,7 @@
 // Ventas (POS) de la tienda: cotizacion, registro, consulta y cancelacion.
 class VentaController
 {
-    const FORMAS_PAGO = ['efectivo', 'tdc', 'tdb', 'transferencia', 'monedero', 'tarjeta', 'cheque', 'vales', 'otro'];
+    const FORMAS_PAGO = ['efectivo', 'tdc', 'tdb', 'transferencia', 'cheque', 'monedero'];
 
     private static function ivaEmpresa(): float
     {
@@ -75,7 +75,9 @@ class VentaController
             $imp = num($pg['importe'] ?? 0);
             if ($imp < 0) throw new ApiError('Un pago no puede ser negativo', 400, 'VALIDATION');
             if ($imp == 0) continue;
-            $pagos[] = ['forma' => $forma, 'importe' => $imp, 'id_banco' => Tenant::owns('bancos', $pg['id_banco'] ?? null, 'Banco'),
+            // tarjeta -> terminal (y su cuenta); transferencia/cheque -> cuenta; efectivo -> caja del almacen
+            [$idBanco, $idTerminal] = Cobros::destino($forma, $pg['id_banco'] ?? null, $pg['id_terminal'] ?? null);
+            $pagos[] = ['forma' => $forma, 'importe' => $imp, 'id_banco' => $idBanco, 'id_terminal' => $idTerminal,
                         'referencia' => $pg['referencia'] ?? null];
             $totalPagado += $imp;
             if ($forma === 'monedero') $saldoFavorUsado += $imp;
@@ -134,9 +136,15 @@ class VentaController
                     'venta', 'Venta ' . $folio, 'Venta', $ventaId, $idUser, $folio);
             }
             foreach ($pagos as $pg) {
-                Db::insert('INSERT INTO venta_pagos (id_empresa, id_venta, forma, importe, id_banco, referencia) VALUES (?,?,?,?,?,?)',
-                    [$emp, $ventaId, $pg['forma'], $pg['importe'], $pg['id_banco'], $pg['referencia']]);
+                Db::insert('INSERT INTO venta_pagos (id_empresa, id_venta, forma, importe, id_banco, id_terminal, referencia) VALUES (?,?,?,?,?,?,?)',
+                    [$emp, $ventaId, $pg['forma'], $pg['importe'], $pg['id_banco'], $pg['id_terminal'], $pg['referencia']]);
+                // dinero que no es efectivo: entra a la cuenta de la terminal / transferencia
+                if ($pg['forma'] !== 'efectivo') {
+                    Cobros::entrada($emp, $pg['forma'], $pg['importe'], $pg['id_banco'], $pg['id_terminal'], $idAlm, 'Venta ' . $folio, 'Venta', $ventaId, $idUser);
+                }
             }
+            // efectivo: entra a la caja lo recibido menos el cambio entregado
+            Cobros::entrada($emp, 'efectivo', round($totalEfectivo - $cambioEfectivo, 2), null, null, $idAlm, 'Venta ' . $folio, 'Venta', $ventaId, $idUser);
 
             if ($idCliente) {
                 if ($montoCredito > 0)       Ledger::clienteMov($emp, $idCliente, 'venta', 'Venta ' . $folio, $montoCredito, 'cargo', 'MXN', null, 'Venta', $ventaId);
@@ -186,7 +194,8 @@ class VentaController
 
         $pagos = array_map(fn($pg) => [
             'forma' => $pg['forma'], 'importe' => (float) $pg['importe'],
-            'id_banco' => $pg['id_banco'] !== null ? (int) $pg['id_banco'] : null, 'referencia' => $pg['referencia'],
+            'id_banco' => $pg['id_banco'] !== null ? (int) $pg['id_banco'] : null,
+            'id_terminal' => $pg['id_terminal'] !== null ? (int) $pg['id_terminal'] : null, 'referencia' => $pg['referencia'],
         ], Db::all('SELECT * FROM venta_pagos WHERE id_empresa = ? AND id_venta = ? ORDER BY id', [$emp, $id]));
 
         return [
@@ -262,6 +271,15 @@ class VentaController
                 if ((float) $v['saldo_favor_usado'] > 0)    Ledger::monederoMov($emp, $cid, (float) $v['saldo_favor_usado'], 'deposito', 'Cancelacion ' . $v['folio'], 'CancelacionVenta', $id);
                 if ((float) $v['saldo_favor_generado'] > 0) Ledger::monederoMov($emp, $cid, -1 * (float) $v['saldo_favor_generado'], 'gasto', 'Cancelacion ' . $v['folio'], 'CancelacionVenta', $id);
             }
+            // el dinero cobrado se devuelve: sale de la caja (efectivo neto) y de las cuentas (tarjeta / transferencia)
+            $efectivo = 0.0;
+            foreach (Db::all('SELECT * FROM venta_pagos WHERE id_empresa = ? AND id_venta = ?', [$emp, $id]) as $pg) {
+                if ($pg['forma'] === 'efectivo') { $efectivo += (float) $pg['importe']; continue; }
+                Cobros::salida($emp, $pg['forma'], (float) $pg['importe'], $pg['id_banco'] !== null ? (int) $pg['id_banco'] : null,
+                    $pg['id_terminal'] !== null ? (int) $pg['id_terminal'] : null, (int) $v['id_almacen'], 'Cancelacion ' . $v['folio'], 'CancelacionVenta', $id, $idUser);
+            }
+            Cobros::salida($emp, 'efectivo', round($efectivo - (float) $v['cambio_efectivo'], 2), null, null, (int) $v['id_almacen'],
+                'Cancelacion ' . $v['folio'], 'CancelacionVenta', $id, $idUser);
             Db::run('UPDATE comisiones SET anulada = 1 WHERE id_empresa = ? AND id_venta = ?', [$emp, $id]);
             Db::run("UPDATE ventas SET estado = 'cancelada', cancelada_por = ?, fecha_cancelacion = NOW() WHERE id = ? AND id_empresa = ?", [$idUser, $id, $emp]);
             Db::commit();

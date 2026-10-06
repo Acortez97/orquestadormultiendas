@@ -219,14 +219,22 @@ class DevolucionController
         $totalNuevo = $q['total'];
         $diferencia = round($totalNuevo - $totalDev, 2);
         $pagoDif = max(0, num($b['pago_diferencia'] ?? 0));
+        $formaDif = (string) ($b['forma_diferencia'] ?? 'efectivo');
+        if (!in_array($formaDif, ['efectivo', 'tdc', 'tdb', 'transferencia', 'cheque'], true)) throw new ApiError('Forma de pago no valida', 400, 'VALIDATION');
+        if ($pagoDif > max(0, $diferencia) + 0.01) throw new ApiError('El pago excede la diferencia a cubrir', 400, 'VALIDATION');
+        [$idBancoDif, $idTermDif] = $pagoDif > 0 ? Cobros::destino($formaDif, $b['id_banco'] ?? null, $b['id_terminal'] ?? null) : [null, null];
         if ($diferencia > 0.0001 && !$v['id_cliente'] && $pagoDif + 0.01 < $diferencia) {
             throw new ApiError('Sin cliente, la diferencia se debe pagar completa', 400, 'VALIDATION');
         }
         $idAlm = (int) $v['id_almacen']; $idUser = $ctx['user']['id'];
         $folio = Db::folio($emp, 'cambio', 'CAMB', 5);
-        $cambioId = Db::insert('INSERT INTO cambios (id_empresa, folio, fecha, id_venta, id_cliente, id_almacen, total_devuelto, total_nuevo, diferencia, pago_diferencia, id_usuario)
-                                VALUES (?,?,NOW(),?,?,?,?,?,?,?,?)',
-            [$emp, $folio, (int) $v['id'], $v['id_cliente'], $idAlm, $totalDev, $totalNuevo, $diferencia, $pagoDif, $idUser]);
+        $cambioId = Db::insert('INSERT INTO cambios (id_empresa, folio, fecha, id_venta, id_cliente, id_almacen, total_devuelto, total_nuevo, diferencia, pago_diferencia,
+                                  forma_diferencia, id_banco, id_terminal, id_usuario)
+                                VALUES (?,?,NOW(),?,?,?,?,?,?,?,?,?,?,?)',
+            [$emp, $folio, (int) $v['id'], $v['id_cliente'], $idAlm, $totalDev, $totalNuevo, $diferencia, $pagoDif,
+             $pagoDif > 0 ? $formaDif : null, $idBancoDif, $idTermDif, $idUser]);
+        // lo que el cliente paga de diferencia entra a la caja / cuenta
+        if ($pagoDif > 0) Cobros::entrada($emp, $formaDif, $pagoDif, $idBancoDif, $idTermDif, $idAlm, 'Cambio ' . $folio, 'Cambio', $cambioId, $idUser);
 
         $sql = "INSERT INTO cambio_lineas (id_empresa, id_cambio, rol, id_articulo, id_valor1, id_valor2, codigo, descripcion, cantidad, precio_unitario, importe)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?)";
@@ -265,7 +273,7 @@ class DevolucionController
         return [
             '_id' => (int) $c['id'], 'folio' => $c['folio'], 'fecha' => $c['fecha'], 'createdAt' => $c['created_at'],
             'folio_venta' => $c['folio_venta'], 'total_devuelto' => (float) $c['total_devuelto'], 'total_nuevo' => (float) $c['total_nuevo'],
-            'diferencia' => (float) $c['diferencia'], 'pago_diferencia' => (float) $c['pago_diferencia'],
+            'diferencia' => (float) $c['diferencia'], 'pago_diferencia' => (float) $c['pago_diferencia'], 'forma_diferencia' => $c['forma_diferencia'],
             'lineas_devueltas' => $dev, 'lineas_nuevas' => $nue,
         ];
     }

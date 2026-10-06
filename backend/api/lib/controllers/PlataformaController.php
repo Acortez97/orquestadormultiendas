@@ -222,6 +222,14 @@ class PlataformaController
             if (abs((float) $r['saldo_credito'] - (float) $r['cxc']) > 0.009) $dif[] = ['cliente' => $r['nombre'], 'tipo' => 'cxc', 'saldo' => (float) $r['saldo_credito'], 'movimientos' => (float) $r['cxc']];
             if (abs((float) $r['saldo_favor'] - (float) $r['mon']) > 0.009)   $dif[] = ['cliente' => $r['nombre'], 'tipo' => 'monedero', 'saldo' => (float) $r['saldo_favor'], 'movimientos' => (float) $r['mon']];
         }
+        // Cuentas bancarias: saldo = suma de su libro de movimientos
+        foreach (Db::all(
+            "SELECT b.nombre, b.saldo_actual,
+                    (SELECT COALESCE(SUM(CASE m.tipo WHEN 'ingreso' THEN m.monto ELSE -m.monto END), 0)
+                       FROM banco_movimientos m WHERE m.id_empresa = b.id_empresa AND m.id_banco = b.id) libro
+             FROM bancos b WHERE b.id_empresa = ?", [$emp]) as $r) {
+            if (abs((float) $r['saldo_actual'] - (float) $r['libro']) > 0.009) $dif[] = ['cliente' => $r['nombre'], 'tipo' => 'cuenta', 'saldo' => (float) $r['saldo_actual'], 'movimientos' => (float) $r['libro']];
+        }
         Http::ok(['tienda' => $e['slug'], 'cuadra' => !$dif, 'diferencias' => $dif]);
     }
 

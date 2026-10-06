@@ -27,6 +27,7 @@ require __DIR__ . '/lib/Ledger.php';
 require __DIR__ . '/lib/Seeder.php';
 require __DIR__ . '/lib/Usuarios.php';
 require __DIR__ . '/lib/Variantes.php';
+require __DIR__ . '/lib/Cobros.php';
 
 // ---- CORS ----
 $origin = $cfg['cors_origin'];
@@ -196,8 +197,17 @@ $routes = [
     ['POST',   '/compras/:id/pagos',          'CompraController::registrarPago', ['compras.pagar', 'finanzas.crear']],
 
     // Finanzas
-    ['GET',    '/finanzas/bancos',                           'FinanzasController::bancosListar',   ['finanzas.ver', 'ventas.crear', 'apartados.crear', 'compras.pagar', 'clientes.ver']],
+    ['GET',    '/finanzas/bancos',                           'FinanzasController::bancosListar',   ['finanzas.ver', 'ventas.crear', 'apartados.crear', 'devoluciones.crear', 'compras.pagar', 'clientes.ver']],
     ['POST',   '/finanzas/bancos',                           'FinanzasController::bancosCrear',    'finanzas.editar'],
+    ['PUT',    '/finanzas/bancos/:id',                       'FinanzasController::bancosEditar',   'finanzas.editar'],
+    ['GET',    '/finanzas/bancos/:id/movimientos',           'FinanzasController::bancoMovimientos', 'finanzas.ver'],
+    ['POST',   '/finanzas/bancos/:id/movimientos',           'FinanzasController::bancoMovimiento',  'finanzas.crear'],
+    ['GET',    '/finanzas/terminales',                       'FinanzasController::terminalesListar', ['finanzas.ver', 'ventas.crear', 'apartados.crear', 'devoluciones.crear', 'clientes.ver']],
+    ['POST',   '/finanzas/terminales',                       'FinanzasController::terminalesCrear',  'finanzas.editar'],
+    ['PUT',    '/finanzas/terminales/:id',                   'FinanzasController::terminalesEditar', 'finanzas.editar'],
+    ['GET',    '/finanzas/cajas',                            'FinanzasController::cajas',            ['finanzas.ver', 'cortes.ver']],
+    ['GET',    '/finanzas/cajas/:id/movimientos',            'FinanzasController::cajaMovimientos',  ['finanzas.ver', 'cortes.ver']],
+    ['POST',   '/finanzas/cajas/:id/movimientos',            'FinanzasController::cajaMovimiento',   'finanzas.crear'],
     ['GET',    '/finanzas/cuentas-cliente',                  'FinanzasController::cxcListar',      ['finanzas.ver', 'clientes.ver']],
     ['POST',   '/finanzas/cuentas-cliente/abono',            'FinanzasController::cxcAbono',       'finanzas.crear'],
     ['GET',    '/finanzas/cuentas-cliente/:id/movimientos',  'FinanzasController::cxcMovimientos', ['finanzas.ver', 'clientes.ver']],

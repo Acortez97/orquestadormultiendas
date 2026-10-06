@@ -73,7 +73,10 @@ class Seeder
             self::catalogosBase($emp);
             Db::insert('INSERT INTO clientes (id_empresa, nombre, lista_precios, es_publico_general, id_almacen) VALUES (?,?,1,1,?)',
                 [$emp, 'Publico General', $alm]);
-            Db::insert('INSERT INTO bancos (id_empresa, nombre, moneda) VALUES (?,?,?)', [$emp, 'Caja', 'MXN']);
+            // Cuenta bancaria principal y su terminal: los cobros con tarjeta/transferencia necesitan destino.
+            // (El efectivo no es una cuenta: vive en la caja de cada almacen.)
+            $cuenta = Db::insert('INSERT INTO bancos (id_empresa, nombre, moneda) VALUES (?,?,?)', [$emp, 'Cuenta principal', 'MXN']);
+            Db::insert('INSERT INTO terminales (id_empresa, nombre, id_banco) VALUES (?,?,?)', [$emp, 'Terminal 1', $cuenta]);
 
             if ($propia) Db::commit();
         } catch (Throwable $e) {
@@ -117,6 +120,8 @@ class Seeder
         Db::insert('INSERT INTO almacenes (id_empresa, codigo, nombre, tipo, vende_publico, serie_folio) VALUES (?,?,?,?,?,?)',
             [$emp, 'BODEGA', 'Bodega', 'bodega', 0, 'B']);
         $marca = Db::insert('INSERT INTO marcas (id_empresa, nombre) VALUES (?,?)', [$emp, 'Marca demo']);
+        $banco2 = Db::insert('INSERT INTO bancos (id_empresa, nombre, moneda, cuenta) VALUES (?,?,?,?)', [$emp, 'Banco secundario', 'MXN', '0123456789']);
+        Db::insert('INSERT INTO terminales (id_empresa, nombre, proveedor, id_banco, comision_pct) VALUES (?,?,?,?,?)', [$emp, 'Terminal 2', 'Clip', $banco2, 3.6]);
         $fam   = Db::insert('INSERT INTO familias (id_empresa, nombre) VALUES (?,?)', [$emp, 'Basicos']);
 
         $catRopa = (int) Db::one('SELECT id FROM categorias WHERE id_empresa = ? AND nombre = ?', [$emp, 'Ropa'])['id'];

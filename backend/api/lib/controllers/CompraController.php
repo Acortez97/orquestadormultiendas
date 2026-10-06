@@ -206,18 +206,18 @@ class CompraController
                     (int) $c['id_almacen'], -1 * (float) $l['cantidad'], 'cancelacion_compra', 'Cancelacion compra ' . $c['folio'],
                     'CancelacionCompra', $id, $idUser, $c['folio']);
             }
+            // CxP: movimientos inversos (no se borra historia)
             $prov = (int) $c['id_proveedor'];
             foreach (Db::all("SELECT * FROM proveedor_movimientos WHERE id_empresa = ? AND ref_tipo IN ('Compra', 'CompraPago') AND id_referencia = ?", [$emp, $id]) as $pm) {
                 $inverso = $pm['tipo'] === 'cargo' ? 'pago' : 'cargo';
                 Ledger::proveedorMov($emp, $prov, $inverso, 'Cancelacion compra ' . $c['folio'], (float) $pm['monto'],
                     $pm['moneda'], $pm['id_banco'] !== null ? (int) $pm['id_banco'] : null, 'CancelacionCompra', $id);
-                if ($pm['tipo'] === 'pago' && $pm['id_banco']) Ledger::bancoDelta($emp, (int) $pm['id_banco'], (float) $pm['monto']);
             }
-        } else {
-            // por aprobar: los pagos anticipados regresan al banco
-            foreach (Db::all('SELECT * FROM compra_pagos WHERE id_empresa = ? AND id_compra = ? AND id_banco IS NOT NULL', [$emp, $id]) as $pg) {
-                Ledger::bancoDelta($emp, (int) $pg['id_banco'], (float) $pg['importe']);
-            }
+        }
+        // el dinero pagado regresa por donde salio (caja de la tienda o cuenta)
+        foreach (Db::all('SELECT * FROM compra_pagos WHERE id_empresa = ? AND id_compra = ?', [$emp, $id]) as $pg) {
+            Cobros::entrada($emp, $pg['forma_pago'], (float) $pg['importe'], $pg['id_banco'] !== null ? (int) $pg['id_banco'] : null, null,
+                (int) $c['id_almacen'], 'Devolucion pago compra ' . $c['folio'], 'CancelacionCompra', $id, $idUser);
         }
         Db::run("UPDATE compras SET estado = 'cancelada' WHERE id = ? AND id_empresa = ?", [$id, $emp]);
         Db::commit();
@@ -247,21 +247,26 @@ class CompraController
         $emp = Tenant::id(); $id = (int) $p['id'];
         $importe = num($b['importe'] ?? 0);
         if ($importe <= 0) throw new ApiError('El importe debe ser mayor a cero', 400, 'VALIDATION');
-        $idBanco = Tenant::owns('bancos', $b['id_banco'] ?? null, 'Banco');
+        $forma = (string) ($b['forma_pago'] ?? 'efectivo');
+        if (!in_array($forma, ['efectivo', 'transferencia', 'cheque'], true)) throw new ApiError('Forma de pago no valida (efectivo, transferencia o cheque)', 400, 'VALIDATION');
+        [$idBanco] = Cobros::destino($forma, $b['id_banco'] ?? null);   // efectivo sale de la caja del almacen de la compra
 
         Db::begin();
         $c = self::compraBloqueada($id);
         if ($c['estado'] === 'cancelada') throw new ApiError('No se puede pagar una compra cancelada', 400, 'VALIDATION');
         if ((float) $c['total_pagado'] + $importe > (float) $c['total'] + 0.01) throw new ApiError('El pago excede el saldo de la compra', 400, 'VALIDATION');
+        if ($forma === 'efectivo' && $importe > FinanzasController::saldoCaja($emp, (int) $c['id_almacen']) + 0.01) {
+            throw new ApiError('La caja del almacen de la compra no tiene ese efectivo', 400, 'VALIDATION');
+        }
         Db::insert('INSERT INTO compra_pagos (id_empresa, id_compra, fecha, forma_pago, importe, aplica_iva, id_banco, referencia, id_usuario)
                     VALUES (?,?,NOW(),?,?,?,?,?,?)',
-            [$emp, $id, $b['forma_pago'] ?? 'efectivo', $importe, !empty($b['aplica_iva']) ? 1 : 0, $idBanco, $b['referencia'] ?? null, $ctx['user']['id']]);
+            [$emp, $id, $forma, $importe, !empty($b['aplica_iva']) ? 1 : 0, $idBanco, $b['referencia'] ?? null, $ctx['user']['id']]);
         Db::run('UPDATE compras SET total_pagado = total_pagado + ? WHERE id = ? AND id_empresa = ?', [$importe, $id, $emp]);
         // CxP: si la compra ya genero cargo, el pago se registra ya; si no, se registra al aprobar
         if ($c['estado'] === 'aprobada') {
             Ledger::proveedorMov($emp, (int) $c['id_proveedor'], 'pago', 'Pago compra ' . $c['folio'], $importe, 'MXN', $idBanco, 'CompraPago', $id);
         }
-        Ledger::bancoDelta($emp, $idBanco, -$importe);
+        Cobros::salida($emp, $forma, $importe, $idBanco, null, (int) $c['id_almacen'], 'Pago compra ' . $c['folio'], 'CompraPago', $id, $ctx['user']['id']);
         Db::commit();
         Ledger::audit($ctx, 'pagar', 'Compra', $id, 'Pago ' . $importe);
         Http::created(['id_compra' => $id, 'importe' => $importe], 'Pago');
