@@ -462,13 +462,13 @@ al administrador" y no pueden entrar. Sus datos se conservan intactos; al reacti
 |---|---|---|
 | **F0** ✅ | Copia del proyecto, BD `orquestadormultiendas` en XAMPP (3307), repo git, secretos fuera de `config.php`, scripts `iniciar.bat`/`detener.bat`, `reset-db.php` bloqueado fuera de localhost. *Pendiente:* rebrand de textos visibles (falta definir el nombre comercial). | 0.5 día |
 | **F1** ✅ | **Esquema v2** completo (sección 5): `id_empresa` en todas las tablas, FKs compuestas, variantes con `NULL`+FK, folios por tienda, `modulos`/`empresa_modulos`/`user_permisos`, índices. Instalador y semilla (superadmin + 2 tiendas demo). | 2–3 días |
-| **F2** | `lib/Tenant.php`, helpers `Db::*T`, ids opacos por tienda, login con correo `usuario@<tienda>.levotek.com`, bloqueo por intentos, tienda suspendida, permiso efectivo por acción, `token_version`. | 2 días |
-| **F3** | Adaptar los 21 controladores al esquema v2 (columnas renombradas, `id_empresa` en hijas, `Tenant::owns` en cada id de entrada, 404 en vez de 403) + **pruebas de aislamiento A/B** (API y BD directa) + conciliación de saldos. | 4–5 días |
-| **F4** | `PlataformaController` (tiendas, módulos, usuarios, siembra, entrar-como, dashboard, export). | 2 días |
-| **F5** | Frontend panel de administración (`/admin`). | 2–3 días |
-| **F6** | Ajustes del panel de tienda (menú por permisos efectivos, branding por tienda, uploads por tienda). | 1 día |
-| **F6b** | Gestión de usuarios por la tienda (`admin_tienda`): reglas de la sección 4.7 en `AuthController`, página Usuarios adaptada, y casos extra en las pruebas de aislamiento (admin de A intentando crear/editar usuarios de B, dar módulos no habilitados, escalar a `admin_tienda`). | 1.5 días |
-| **F7** | Despliegue en GoDaddy + checklist (borrar `install.php`/`reset-db.php`, secretos fuera del repo, cambiar contraseña superadmin). | 0.5 día |
+| **F2** ✅ | `lib/Tenant.php`, helpers `Db::*T`, ids opacos por tienda, login con correo `usuario@<tienda>.levotek.com`, bloqueo por intentos, tienda suspendida, permiso efectivo por acción, `token_version`. | 2 días |
+| **F3** ✅ | Adaptar los 21 controladores al esquema v2 (columnas renombradas, `id_empresa` en hijas, `Tenant::owns` en cada id de entrada, 404 en vez de 403) + **pruebas de aislamiento A/B** (API y BD directa) + conciliación de saldos. | 4–5 días |
+| **F4** ✅ | `PlataformaController` (tiendas, módulos, usuarios, siembra, entrar-como, dashboard, export). | 2 días |
+| **F5** ✅ | Frontend panel de administración (`/admin`). | 2–3 días |
+| **F6** ✅ | Ajustes del panel de tienda (menú por permisos efectivos, branding por tienda, uploads por tienda). | 1 día |
+| **F6b** ✅ | Gestión de usuarios por la tienda (`admin_tienda`): reglas de la sección 4.7 en `AuthController`, página Usuarios adaptada, y casos extra en las pruebas de aislamiento (admin de A intentando crear/editar usuarios de B, dar módulos no habilitados, escalar a `admin_tienda`). | 1.5 días |
+| **F7** ✅ | Despliegue en GoDaddy + checklist (borrar `install.php`/`reset-db.php`, secretos fuera del repo, cambiar contraseña superadmin). | 0.5 día |
 
 ### Decisiones tomadas al implementar F1 (difieren del borrador)
 - **Acciones de permiso:** en lugar de un `ENUM` fijo, tabla `modulo_acciones` (cada módulo define sus acciones:
@@ -480,7 +480,7 @@ al administrador" y no pueden entrar. Sus datos se conservan intactos; al reacti
 - `empresa_modulos.activo`: deshabilitar un módulo no borra los permisos; solo dejan de aplicar.
 - Verificado en MariaDB 10.4 (XAMPP): 49 tablas, 128 FKs, CHECKs activos. `backend/tests/esquema_test.php`: 53/53.
 
-**Total estimado: 16–20 días de trabajo.** F1–F3 no se deben recortar: son las que garantizan que una
+**Estado (2026-10-06): F0–F7 completas.** Total estimado original: 16–20 días de trabajo. F1–F3 no se deben recortar: son las que garantizan que una
 tienda nunca vea, use ni deduzca datos de otra.
 
 ---

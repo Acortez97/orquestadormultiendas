@@ -47,7 +47,16 @@ try {
     fatal('No se pudo conectar a la BD. Revisa lib/config.local.php. Detalle: ' . $e->getMessage());
 }
 $pdo = Db::pdo();
-out('Conexion a la base de datos OK (' . $cfg['db']['name'] . ', ' . $pdo->query('SELECT VERSION()')->fetchColumn() . ')');
+$version = (string) $pdo->query('SELECT VERSION()')->fetchColumn();
+out('Conexion a la base de datos OK (' . $cfg['db']['name'] . ', ' . $version . ')');
+// Las reglas CHECK del esquema solo se aplican en MySQL 8.0.16+ o MariaDB 10.2+.
+// En versiones anteriores se ignoran (el aislamiento por llaves foraneas compuestas SI funciona
+// y la API valida esas mismas reglas), pero conviene saberlo.
+$esMaria = stripos($version, 'mariadb') !== false;
+$num = preg_replace('/[^0-9.].*$/', '', $version);
+if ((!$esMaria && version_compare($num, '8.0.16', '<')) || ($esMaria && version_compare($num, '10.2', '<'))) {
+    out("Version de BD $version: las reglas CHECK no se aplicaran en la base (la API las valida igual). Recomendado: MySQL 8.0.16+ o MariaDB 10.4+.", false);
+}
 
 $tablas = (int) $pdo->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()')->fetchColumn();
 if ($tablas > 0) {

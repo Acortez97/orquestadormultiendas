@@ -26,16 +26,9 @@ Acceso con correo + contraseña, donde el dominio identifica la tienda:
 
 ## Estado
 
-| Fase | Contenido | Estado |
-|---|---|---|
-| F0 | Preparación: repo, BD propia, secretos fuera del repo | ✅ |
-| F1 | Esquema v2 aislado por tienda + instalador + pruebas de BD | ✅ |
-| F2 | Núcleo de seguridad: `Tenant`, login por dominio, permisos por acción, ids opacos | ⏳ |
-| F3 | Adaptar los 21 controladores al esquema v2 + pruebas de aislamiento por API | ⏳ |
-| F4–F7 | API de plataforma, panel `/admin`, panel de tienda, despliegue | ⏳ |
-
-> ⚠️ **Mientras F2 y F3 no estén hechas, la API no funciona contra el esquema v2** (los controladores
-> todavía usan las columnas de MultiTienda). La base, el instalador y sus pruebas sí funcionan.
+Fases **F0–F7 completas** (ver [PLAN-ORQUESTADOR.md](PLAN-ORQUESTADOR.md)): esquema aislado por tienda, núcleo de
+seguridad (ids opacos, login por dominio, permisos por acción), los 21 controladores adaptados, API de plataforma,
+panel `/admin`, panel de tienda y empaquetado para GoDaddy. **361 pruebas automáticas** en verde.
 
 ---
 
@@ -56,15 +49,17 @@ Requisitos: PHP 8 con `pdo_mysql`, XAMPP (MariaDB), Node 20+.
    ```
    Crea el esquema, el superadmin y dos tiendas demo (`demo1`, `demo2`) con admin y cajero.
    Las contraseñas se generan al azar y quedan en `backend/api/credenciales.local.txt` (ignorado por git).
-4. **Pruebas**
+4. **Pruebas** (ver la lista completa en [CLAUDE.md](CLAUDE.md#pruebas-todas-deben-dar-100--las-de-api-requieren-el-backend-en-8082))
    ```bash
-   php backend/tests/esquema_test.php    # aislamiento entre tiendas a nivel BD (53 casos)
-   php backend/tests/loginid_test.php    # correos de acceso
+   php backend/tests/esquema_test.php          # aislamiento entre tiendas en la BD
+   php backend/tests/aislamiento_api_test.php  # flujo completo de una tienda + 70 ataques desde otra
    ```
 
 ## Producción (GoDaddy)
-Ver [DESPLIEGUE-GODADDY.md](DESPLIEGUE-GODADDY.md) (se actualiza en F7). Nunca subir `reset-db.php`,
-`backend/tests/` ni `config.local.php` del entorno local.
+```bash
+cd frontend && npm run build && cd .. && php herramientas/empaquetar.php
+```
+y sube `deploy-godaddy/public_html/`. Guía paso a paso: [DESPLIEGUE-GODADDY.md](DESPLIEGUE-GODADDY.md).
 
 ## Estructura
 ```
@@ -75,6 +70,7 @@ backend/api/          API PHP (se sube a public_html/api/)
   schema.sql          esquema v2
   lib/                Db, Jwt, Http, Ledger, Pricing, LoginId, Seeder, controllers/
 backend/tests/        pruebas (no se suben al servidor)
+herramientas/         empaquetar.php (arma deploy-godaddy/public_html)
 frontend/             app React
 docs/historial/       documentación de MultiTienda/LEVOTEK (origen de este proyecto)
 ```

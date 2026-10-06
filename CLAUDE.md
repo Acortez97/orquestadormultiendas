@@ -11,111 +11,93 @@ una sola BD**. Fork de MultiTienda (a su vez de LEVOTEK). Dos paneles en el mism
 
 **Idioma:** el usuario escribe en español; responde y documenta en español.
 
+## Estado: F0–F7 completas (2026-10-06)
+Backend, frontend y empaquetado listos y probados. Pendiente del usuario: subir a GoDaddy
+(ver [DESPLIEGUE-GODADDY.md](DESPLIEGUE-GODADDY.md)) y definir el nombre comercial (los textos visibles aún
+dicen "MultiTienda"; la tienda ve su propio nombre/logo).
+
 ## Reglas NO negociables (aislamiento entre tiendas)
-1. **"Tienda" = fila de `empresas`.** Toda tabla de negocio tiene `id_empresa NOT NULL`. Las únicas tablas sin
-   `id_empresa` son de sistema: `empresas`, `modulos`, `modulo_acciones`, `login_intentos`.
-2. **Ninguna tienda puede ver, usar ni deducir datos de otra**, ni saber que existen otras tiendas
-   (ni por ids, folios, mensajes de error, URLs de fotos o pantallas).
-3. **El `id_empresa` sale SIEMPRE del token (JWT)**, nunca del body/query. Si el body lo trae, se ignora.
-4. **Toda consulta** (`SELECT/UPDATE/DELETE`, incluidas tablas hijas) filtra `WHERE id_empresa = ?`.
-5. **Todo id que llega del front** (cliente, almacén, artículo, variante, proveedor, banco, empleado, venta…)
-   se valida contra la tienda del token. Si no es suyo → **404 "No encontrado"** (igual que si no existiera;
-   nunca 403, que confirmaría que existe).
-6. **Esquema:** toda relación entre tablas de negocio es FK compuesta `(id_empresa, id_x) → padre(id_empresa, id)`.
-   Cada tabla de negocio declara `UNIQUE (id_empresa, id)`. Así MySQL rechaza cruces aunque el código falle.
-7. FKs de negocio: `ON DELETE RESTRICT` (borrado lógico con `is_active`); solo el detalle de un documento
-   usa `CASCADE`. **Nunca `SET NULL`** en FK compuesta (pondría `id_empresa` en NULL).
-8. Cualquier cambio al esquema: actualizar `backend/api/schema.sql` y correr `php backend/tests/esquema_test.php`
-   (debe dar 100 %). Agregar casos de prueba para tablas/relaciones nuevas.
-9. **Nunca** commitear secretos: `lib/config.local.php`, `frontend/.env`, `*.local.txt` están en `.gitignore`.
+1. **"Tienda" = fila de `empresas`.** Toda tabla de negocio tiene `id_empresa NOT NULL`. Solo son globales:
+   `empresas`, `modulos`, `modulo_acciones`, `login_intentos`.
+2. **Ninguna tienda puede ver, usar ni deducir datos de otra**, ni saber que existen (ids, folios, SKU,
+   mensajes de error, URLs de fotos, pantallas).
+3. **El `id_empresa` sale SIEMPRE de `Tenant::id()`** (sesión), nunca del body/query (`Tenant::entrada` lo descarta).
+4. **Toda consulta** filtra `id_empresa = ?`, incluidos los JOIN (`ON x.id_empresa = y.id_empresa AND x.id = y.id_x`).
+5. **Todo id que llega del front** se valida con `Tenant::owns($tabla, $id, 'Etiqueta', $requerido)`.
+   Ajeno o inexistente → **404** (nunca 403).
+6. **Esquema:** toda relación entre tablas de negocio es FK compuesta `(id_empresa, id_x) → padre(id_empresa, id)`;
+   cada tabla declara `UNIQUE (id_empresa, id)`. RESTRICT en negocio, CASCADE solo en detalle, **nunca SET NULL**.
+7. **Importes y precios nunca se toman del front** (ventas/cambios cotizan con `Pricing`; devoluciones valoran al
+   precio vendido). Saldos (`clientes.saldo_*`, `bancos.saldo_actual`) solo cambian vía `lib/Ledger.php`.
+8. Cambios al esquema → `backend/api/schema.sql` + casos en `backend/tests/esquema_test.php` (debe dar 100 %).
+9. **Nunca** commitear secretos: `lib/config.local.php`, `frontend/.env`, `*.local.txt`, `deploy-godaddy/` están ignorados.
 
-## Roles, permisos y login
-- Roles: `superadmin` (`id_empresa` NULL), `admin_tienda`, `usuario`. CHECK en BD: superadmin ⇔ sin tienda.
-- **Permiso efectivo** = `user_permisos` (módulo + acción) ∩ `empresa_modulos.activo = 1`.
-  `admin_tienda` tiene implícitos todos los módulos activos de su tienda. Superadmin pasa todo en `/plataforma/*`.
-- Módulos y acciones válidas: tablas `modulos` y `modulo_acciones` (datos al final de `schema.sql`).
-  FK `user_permisos(id_empresa, modulo) → empresa_modulos`: la BD impide dar un módulo que la tienda no tiene.
-- **Login = correo de acceso + contraseña.** `usuario@<slug>.levotek.com` (tienda) o `usuario@levotek.com`
-  (superadmin). Helper: `lib/LoginId.php` (`armar`, `separar`, `usuario`, `slug`). Dominio en `config['login_domain']`.
-  - `users.usuario` = parte antes de la @ (única por tienda); `users.login` = correo completo (único global).
-  - El `admin_tienda` solo escribe la parte antes de la @; el dominio lo pone el servidor.
-  - `empresas.slug` **no se puede editar** después de crear la tienda.
-  - Error de login siempre genérico: "Correo o contraseña incorrectos". Bloqueo tras 5 intentos (`login_intentos`).
-  - `debe_cambiar_password = 1` en usuarios nuevos; `token_version` +1 al cambiar permisos/desactivar.
-- `admin_tienda` puede crear/editar usuarios **rol `usuario`** de su tienda con módulos de su tienda; no puede
-  crear `admin_tienda`/`superadmin`, ni tocar su propio rol/permisos, ni módulos de la tienda.
-- Superadmin "entrando como tienda" (soporte): token temporal con `id_empresa` de la tienda; los registros que
-  cree guardan `id_usuario = NULL` y la bitácora lleva `audit_log.act_as = id del superadmin`.
+## Arquitectura del backend (`backend/api/`)
+- `index.php`: tabla de rutas `[metodo, patron, handler, permiso]`. Permisos: `publico`, `sesion`, `tienda`,
+  `'modulo.accion'` (o array = cualquiera), `'admin:modulo'` (solo admin_tienda), `plataforma` (solo superadmin).
+  **Ruta sin permiso declarado = 404.** Recarga el usuario de la BD en cada petición (activo + `token_version`),
+  activa la tienda, convierte ids opacos y autoriza. En modo soporte registra toda escritura en la bitácora.
+  `PDOException` 23000 → 400 genérico.
+- `lib/Tenant.php`: tienda activa + **ids opacos** (Feistel 32 bits + HMAC 16 bits, base62 de 9 caracteres, sal
+  `empresas.id_salt`). Conversión automática: `$_GET`, parámetros `:id` y `Http::body()` se decodifican al entrar;
+  `Http::ok()` codifica la salida. Claves de id: `id`, `_id`, `id_*`, `*_por`, `colores`, `tallas`, `valores`.
+  Nunca sale `id_empresa`. En `/plataforma/*` se usa la sal de plataforma. `Http::bodyCrudo()` = sin conversión.
+- `lib/Permisos.php`: permiso efectivo = `user_permisos` ∩ `empresa_modulos.activo`; admin_tienda = todas las
+  acciones de los módulos activos. El módulo `usuarios` no se asigna como permiso suelto.
+- `lib/Usuarios.php` (alta/edición con reglas de admin_tienda vs superadmin), `lib/LoginId.php` (correos de acceso),
+  `lib/Seeder.php` (superadmin, alta de tienda con su semilla, datos demo), `lib/Variantes.php` (valida variante
+  del artículo; API usa `id_color/id_talla`, BD `id_valor1/id_valor2` con NULL), `Db::folio()` (consecutivos por
+  tienda con `FOR UPDATE`).
+- `lib/controllers/PlataformaController.php`: tiendas, módulos, usuarios de cualquier tienda, entrar en soporte
+  (token 2 h con claim `t`), conciliación, respaldo JSON, bitácora global.
 
-## Estado del proyecto (actualizar al cerrar cada fase)
-| Fase | Estado |
-|---|---|
-| F0 Preparación (repo, BD propia, secretos fuera de `config.php`, scripts locales) | ✅ |
-| F1 Esquema v2 + `install.php` + `Seeder` + pruebas de BD (53/53) | ✅ |
-| **F2 Núcleo de seguridad** | ⏳ **siguiente** |
-| F3 Adaptar los 21 controladores + pruebas de aislamiento por API | ⏳ |
-| F4 API de plataforma · F5 panel `/admin` · F6/F6b panel de tienda · F7 despliegue | ⏳ |
+## Roles, login y sesión
+- Roles: `superadmin` (`id_empresa` NULL; CHECK en BD), `admin_tienda`, `usuario`.
+- Login: `usuario@<slug>.levotek.com` (tienda) o `usuario@levotek.com` (superadmin). Error siempre
+  "Correo o contraseña incorrectos" (hash de relleno contra timing); bloqueo 5 fallos/15 min por correo, 20 por IP.
+- JWT solo trae `u` (id cifrado con sal de plataforma), `v` (token_version) y opcional `t` (soporte). Cambiar
+  permisos, desactivar o resetear contraseña sube `token_version` → la sesión se cierra.
+- Usuarios nuevos `debe_cambiar_password = 1` (el front obliga a cambiarla). `empresas.slug` es inmutable.
+- Superadmin en soporte: `ctx.user.id = null`, `act_as` = su id; los registros que crea guardan `id_usuario` NULL.
 
-⚠️ **Hoy la API no funciona contra la BD v2**: los controladores (`backend/api/lib/controllers/`) e
-`index.php` siguen escritos para el esquema de MultiTienda. Eso se arregla en F2 + F3.
-
-### Qué hace F2 (siguiente tarea)
-- `lib/Tenant.php`: `Tenant::id($ctx)`, `Tenant::owns($tabla, $id)` (lanza 404), ids opacos por tienda
-  (codificar/decodificar `_id` con `empresas.id_salt`, estilo Hashids).
-- Helpers `Db::oneT / allT / runT` que exigen `id_empresa`.
-- `AuthController::login` con `LoginId::separar` + `login_intentos` + validar tienda y usuario activos;
-  JWT con `id_user`, `id_empresa`, `rol`, `token_version`. `/auth/me` con permisos efectivos.
-- `index.php`: verificar `token_version` y tienda activa en cada petición; mapa ruta → (módulo, acción);
-  `/plataforma/*` solo superadmin; usuarios de tienda nunca llegan ahí (404).
-- Pruebas en `backend/tests/` (login por dominio, intentos, tienda suspendida, permisos).
-
-### Mapa de cambios del esquema (lo que F3 debe adaptar en los controladores)
-| Antes (MultiTienda) | Ahora (v2) |
-|---|---|
-| `users.email` | `users.usuario` + `users.login` |
-| `users.permisos` (JSON) | tabla `user_permisos` (módulo, acción) |
-| `users.rol` `admin` | `superadmin` / `admin_tienda` / `usuario` |
-| `users.id_tienda` | `users.id_almacen_default` |
-| `clientes.id_tienda`, `empleados.id_tienda` | `clientes.id_almacen`, `empleados.id_almacen` |
-| `id_color` / `id_talla` con `0` = sin eje | `id_valor1` / `id_valor2` con `NULL` (inventario, kardex y todas las `*_lineas`) |
-| `articulo_colores` / `articulo_tallas` | `articulo_eje_valores (id_articulo, eje 1/2, id_valor)` |
-| `articulo_variante_codigos.id_eje1/2` | `id_valor1/2` |
-| tablas `colores`, `tallas`, `colecciones`; `articulos.id_coleccion` | eliminadas (usar `atributos`/`atributo_valores`, `cortes_catalogo`) |
-| `articulo_fotos.imgkey`, `uploads/articulos/` | `archivo`, `uploads/<empresas.uploads_token>/` |
-| `inventario_movimientos.referencia_tipo` | `ref_tipo` |
-| `folio_venta` en devoluciones/cambios/comisiones | eliminado (se obtiene con JOIN a `ventas`) |
-| Folio = `COUNT(*)+1` | tabla `folio_series` con `SELECT … FOR UPDATE`; `UNIQUE (id_empresa, folio)` |
-| Tablas hijas sin `id_empresa` | **todas** lo llevan: incluirlo en cada `INSERT` |
-| `compra_pagos` sin banco | `compra_pagos.id_banco` |
-| `audit_log.id_empresa` NOT NULL | NULL = acción de plataforma; columna `act_as` |
-
-Unicidades por tienda: `inventario` usa columnas generadas `v1_key/v2_key = IFNULL(id_valorN, 0)` para que
-la celda sin variante sea única. SKU, código, EAN, folios y usuarios son únicos **por tienda**.
+## Frontend (`frontend/src/`)
+- `services/session.js` (token/usuario, modo soporte, limpieza), `contexts/AuthContext.jsx` (`hasPermiso('mod.acc')`,
+  `esSuperadmin`, `esAdminTienda`, `entrarSoporte`, `cambiarPassword`).
+- `App.jsx`: zonas `tienda` / `admin` / `sesion`, todas las páginas con `React.lazy`.
+- `pages/admin/*`: panel general. `pages/usuarios/UsuariosPage.jsx`: usuarios de la tienda (solo admin_tienda).
+  `components/common/PermisosEditor.jsx`: editor módulo × acción.
+- Permisos del front deben coincidir con `modulo_acciones` (datos al final de `schema.sql`).
 
 ## Entorno local (Windows)
-- MariaDB **10.4** de XAMPP en **3307** (se fuerza con `--port=3307`: el `my.ini` de esta PC dice 3306).
-  En **3306** corre el MySQL del sistema: **no tocarlo**.
-- `iniciar.bat` / `detener.bat`: MariaDB 3307, backend PHP `php -S 127.0.0.1:8082 -t backend/api`, Vite 3001.
-- Config local: `backend/api/lib/config.local.php` (copia de `config.local.example.php`). `config.php` no lleva secretos;
-  `index.php` se niega a arrancar si `jwt_secret` tiene menos de 32 caracteres.
-- Reinstalar BD: `php backend/api/reset-db.php --go --demo` → superadmin + tiendas `demo1` y `demo2`
-  (admin + cajero1 cada una). Contraseñas aleatorias en `backend/api/credenciales.local.txt` (ignorado).
-  **No muestres esas contraseñas en el chat.**
-- `reset-db.php` solo funciona con `debug = true` y desde localhost/CLI; nunca se despliega.
+- MariaDB 10.4 de XAMPP en **3307** (forzado con `--port=3307`; en 3306 está el MySQL del sistema: no tocarlo).
+- `iniciar.bat` / `detener.bat`: MariaDB 3307, backend `php -S 127.0.0.1:8082 -t backend/api`, Vite 3001.
+- `backend/api/lib/config.local.php` (de `config.local.example.php`); `frontend/.env` (de `.env.example`).
+- `php backend/api/reset-db.php --go --demo` → superadmin + tiendas `demo1` y `demo2` (admin + cajero1).
+  Contraseñas aleatorias en `backend/api/credenciales.local.txt` (ignorado). **No las muestres en el chat.**
+  Todos los usuarios demo deben cambiar su contraseña al primer acceso por la UI (la API de pruebas no lo exige).
 
-## Comandos
+## Pruebas (todas deben dar 100 %; las de API requieren el backend en 8082)
 ```bash
-php backend/api/reset-db.php --go --demo   # BD limpia con tiendas demo
-php backend/tests/esquema_test.php         # aislamiento a nivel BD (debe dar 100 %)
-php backend/tests/loginid_test.php         # correos de acceso
-cd frontend && npm run build               # el bundle principal pesa ~1.4 MB (pendiente dividir en F5)
-for f in backend/api/*.php backend/api/lib/*.php backend/api/lib/controllers/*.php; do php -l "$f"; done
+php backend/api/reset-db.php --go --demo && php backend/tests/esquema_test.php         # 53  aislamiento en BD
+php backend/tests/loginid_test.php                                                     # 16  correos de acceso
+php backend/api/reset-db.php --go --demo && php backend/tests/auth_test.php            # 59  login, permisos, usuarios
+php backend/api/reset-db.php --go --demo && php backend/tests/aislamiento_api_test.php # 196 flujo completo + 70 ataques
+php backend/api/reset-db.php --go --demo && php backend/tests/plataforma_test.php      # 53  panel de plataforma
+cd frontend && npm run build                                                           # JS principal ~309 KB
 ```
+Cada suite de API necesita una BD recién reiniciada. Para agregar casos de aislamiento, usa `noEncontrado()`
+(exige 404 de registro, no de ruta) y agrega un control positivo con la tienda dueña.
 
-## Convenciones
-- Respuestas de la API: `{ success, data, error: {code,message}|null, message?, meta? }` (`lib/Http.php`).
-- Ids expuestos como `_id` string; referencias pobladas como objetos (`id_articulo: {_id, codigo, descripcion}`).
-- PHP puro sin Composer (hosting compartido). Saldos (`clientes.saldo_*`, `bancos.saldo_actual`) solo se
-  modifican vía `lib/Ledger.php` dentro de la transacción del movimiento.
-- Al cerrar una fase: actualizar la tabla de estado de este archivo, la de `README.md` y la de `PLAN-ORQUESTADOR.md`.
-- Documentación histórica (MultiTienda/LEVOTEK) en `docs/historial/`: solo referencia, puede estar desactualizada.
+## Despliegue
+`cd frontend && npm run build` → `php herramientas/empaquetar.php` → subir `deploy-godaddy/public_html/`.
+Guía completa: [DESPLIEGUE-GODADDY.md](DESPLIEGUE-GODADDY.md). Nunca se suben `reset-db.php`, `backend/tests/`,
+`config.local.php` local ni `credenciales.local.txt` (el empaquetador lo verifica).
+
+## Limitaciones conocidas / ideas
+- Kits: se expanden a componentes en venta, cancelación, devolución y cambio; en compras, traspasos y apartados se
+  mueve el propio kit.
+- `bancos.saldo_actual` no tiene tabla de movimientos propia (se mueve en abonos CxC, pagos CxP y pagos de compras;
+  las ventas no lo tocan, igual que en MultiTienda).
+- Facturación CFDI sigue pendiente (requiere PAC).
+- No hay migraciones: el esquema v2 es la versión inicial; cambios futuros necesitan su script de migración.
+- Documentación histórica (MultiTienda/LEVOTEK) en `docs/historial/`.
