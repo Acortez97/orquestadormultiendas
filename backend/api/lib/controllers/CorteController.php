@@ -102,7 +102,7 @@ class CorteController
              FROM banco_movimientos m
              JOIN bancos b ON b.id_empresa = m.id_empresa AND b.id = m.id_banco
              LEFT JOIN terminales t ON t.id_empresa = m.id_empresa AND t.id = m.id_terminal
-             WHERE m.id_empresa = ? AND m.id_almacen = ? AND DATE(m.fecha) = ? AND m.ref_tipo NOT IN ('Deposito', 'Retiro')
+             WHERE m.id_empresa = ? AND m.id_almacen = ? AND DATE(m.fecha) = ? AND m.ref_tipo IN ('Venta', 'CancelacionVenta', 'Apartado', 'Cambio', 'Abono')   -- solo cobros a clientes (los pagos a proveedores no son parte del corte)
              GROUP BY b.nombre, t.nombre, m.forma ORDER BY b.nombre, t.nombre", [$emp, $idAlm, $fecha]);
         $depositos = (float) Db::one("SELECT COALESCE(SUM(monto), 0) s FROM caja_movimientos WHERE id_empresa = ? AND id_almacen = ? AND DATE(fecha) = ? AND ref_tipo = 'Deposito'",
             [$emp, $idAlm, $fecha])['s'];

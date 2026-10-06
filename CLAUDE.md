@@ -48,6 +48,13 @@ dicen "MultiTienda"; la tienda ve su propio nombre/logo).
   `lib/Seeder.php` (superadmin, alta de tienda con su semilla, datos demo), `lib/Variantes.php` (valida variante
   del artículo; API usa `id_color/id_talla`, BD `id_valor1/id_valor2` con NULL), `Db::folio()` (consecutivos por
   tienda con `FOR UPDATE`).
+- **Dinero** (`lib/Cobros.php` + `Ledger::bancoMov/cajaMov`): todo cobro entra con `Cobros::entrada` y todo pago
+  sale con `Cobros::salida`. Efectivo → caja del almacén (`caja_movimientos`); `tdc`/`tdb` → **terminal obligatoria**
+  y el dinero cae en la cuenta de esa terminal; `transferencia`/`cheque` → **cuenta obligatoria**; `monedero` y
+  `anticipo` no mueven dinero. Saldo de cuenta = Σ `banco_movimientos` (la conciliación lo revisa). Depósito =
+  sale de caja y entra a cuenta. El corte (`CorteController::computar`) toma el efectivo esperado del libro de caja
+  del día y el desglose "dónde quedó el dinero" solo de cobros a clientes (`Venta`, `CancelacionVenta`,
+  `Apartado`, `Cambio`, `Abono`). Un corte por almacén y día.
 - `lib/controllers/PlataformaController.php`: tiendas, módulos, usuarios de cualquier tienda, entrar en soporte
   (token 2 h con claim `t`), conciliación, respaldo JSON, bitácora global.
 
@@ -81,10 +88,17 @@ dicen "MultiTienda"; la tienda ve su propio nombre/logo).
 php backend/api/reset-db.php --go --demo && php backend/tests/esquema_test.php         # 53  aislamiento en BD
 php backend/tests/loginid_test.php                                                     # 16  correos de acceso
 php backend/api/reset-db.php --go --demo && php backend/tests/auth_test.php            # 59  login, permisos, usuarios
-php backend/api/reset-db.php --go --demo && php backend/tests/aislamiento_api_test.php # 196 flujo completo + 70 ataques
+php backend/api/reset-db.php --go --demo && php backend/tests/aislamiento_api_test.php # 200 flujo completo + ataques
 php backend/api/reset-db.php --go --demo && php backend/tests/plataforma_test.php      # 53  panel de plataforma
+php backend/api/reset-db.php --go --demo && php backend/tests/cobros_test.php          # 44  cobros, cuentas, caja y corte
 cd frontend && npm run build                                                           # JS principal ~309 KB
 ```
+**Datos de prueba para revisar en pantalla:** `php backend/api/reset-db.php --go --demo && php herramientas/datos_prueba.php`
+(crea además la tienda `papeleriaroma` desde la API de plataforma y en las 3 tiendas: compras, traspasos, merma,
+ventas con cada forma de pago, crédito, kit, cancelación, devoluciones, cambios, apartados, abonos, pagos CxP,
+comisiones, gastos, depósitos y corte; al final verifica caja, cuentas, corte y conciliación). Correr las suites
+de pruebas después borra esos datos: vuelve a cargarlos.
+
 Cada suite de API necesita una BD recién reiniciada. Para agregar casos de aislamiento, usa `noEncontrado()`
 (exige 404 de registro, no de ruta) y agrega un control positivo con la tienda dueña.
 
@@ -96,8 +110,7 @@ Guía completa: [DESPLIEGUE-GODADDY.md](DESPLIEGUE-GODADDY.md). Nunca se suben `
 ## Limitaciones conocidas / ideas
 - Kits: se expanden a componentes en venta, cancelación, devolución y cambio; en compras, traspasos y apartados se
   mueve el propio kit.
-- `bancos.saldo_actual` no tiene tabla de movimientos propia (se mueve en abonos CxC, pagos CxP y pagos de compras;
-  las ventas no lo tocan, igual que en MultiTienda).
+- Las comisiones de terminal (`terminales.comision_pct`) son informativas: el cobro entra completo a la cuenta.
 - Facturación CFDI sigue pendiente (requiere PAC).
 - No hay migraciones: el esquema v2 es la versión inicial; cambios futuros necesitan su script de migración.
 - Documentación histórica (MultiTienda/LEVOTEK) en `docs/historial/`.

@@ -109,7 +109,7 @@ foreach ($pv['por_destino'] as $x) $dest[$x['cuenta'] . '|' . ($x['terminal'] ??
 igual('Cobrado con TDC en Terminal 1 (anticipo; la venta se cancelo)', 40, $dest['Cuenta principal|Terminal 1|tdc'] ?? 0);
 igual('Cobrado con TDB en Terminal 2 (venta mixta + cambio)', 85 + $difCambio, $dest['Banco secundario|Terminal 2|tdb'] ?? 0);
 igual('Transferencias a Banco secundario', 49, $dest['Banco secundario||transferencia'] ?? 0);
-igual('Transferencias a Cuenta principal (liquidacion; el pago a proveedor resta)', $resto - 15, $dest['Cuenta principal||transferencia'] ?? 0);
+igual('Transferencias a Cuenta principal (liquidacion; el pago a proveedor no es cobro)', $resto, $dest['Cuenta principal||transferencia'] ?? 0);
 check('Los depositos no aparecen como cobros', !array_filter(array_keys($dest), fn($k) => str_ends_with($k, '|efectivo')));
 $r = api('POST', '/cortes/cerrar', ['id_almacen' => $alm, 'fondo' => 500, 'efectivo_contado' => 500 + $espCaja], $t);
 status('Cierre del corte con el efectivo exacto', $r, 201);
