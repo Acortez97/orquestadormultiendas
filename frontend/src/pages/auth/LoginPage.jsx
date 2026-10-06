@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 
 function LoginPage() {
   const { login } = useAuth();
   const navigate  = useNavigate();
   const [form, setForm]       = useState({ email: '', password: '' });
-  const [error, setError]     = useState('');
+  const [params] = useSearchParams();
+  const [error, setError]     = useState(params.get('suspendida') ? 'Cuenta suspendida, contacta al administrador.' : '');
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e) {
@@ -14,8 +15,9 @@ function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      await login(form.email, form.password);
-      navigate('/dashboard');
+      const u = await login(form.email, form.password);
+      if (u.debe_cambiar_password) navigate('/cambiar-password');
+      else navigate(u.es_superadmin ? '/admin' : '/dashboard');
     } catch (err) {
       setError(err.message || 'Credenciales inválidas');
     } finally {
@@ -68,14 +70,14 @@ function LoginPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Correo electrónico
+                  Correo de acceso
                 </label>
                 <input
                   type="email"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   className="input-base"
-                  placeholder="usuario@multitienda.mx"
+                  placeholder="usuario@tutienda.levotek.com"
                   required
                   autoComplete="email"
                 />

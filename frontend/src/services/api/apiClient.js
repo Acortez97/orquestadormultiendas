@@ -1,4 +1,5 @@
 import axios from 'axios';
+import session from '../session';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
 
@@ -30,7 +31,7 @@ const apiClient = axios.create({
 
 apiClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('levotek_token');
+    const token = session.token();
     if (token) config.headers.Authorization = `Bearer ${token}`;
     config.headers['X-Correlation-ID'] = uuid();
     return config;
@@ -43,12 +44,11 @@ apiClient.interceptors.response.use(
   (error) => {
     const { response } = error;
 
-    if (response?.status === 401) {
-      localStorage.removeItem('levotek_token');
-      localStorage.removeItem('levotek_user');
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
-      }
+    // Sesion invalida (expirada, permisos cambiados) o tienda suspendida: limpiar y volver al login
+    const suspendida = response?.status === 403 && response?.data?.error?.code === 'SUSPENDED';
+    if ((response?.status === 401 || suspendida) && !window.location.pathname.includes('/login')) {
+      session.limpiar();
+      window.location.href = suspendida ? '/login?suspendida=1' : '/login';
     }
 
     const errorMessage =

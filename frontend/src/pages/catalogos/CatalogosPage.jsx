@@ -3,15 +3,13 @@ import Swal from 'sweetalert2';
 import { PlusIcon } from '@heroicons/react/24/outline';
 import DataTable from '../../components/common/DataTable';
 import Modal from '../../components/common/Modal';
-import { coloresApi, tallasApi, familiasApi, lineasApi, cortesCatalogoApi, marcasApi, conceptosGastoApi } from '../../services/api/endpoints';
+import { familiasApi, lineasApi, cortesCatalogoApi, marcasApi, conceptosGastoApi } from '../../services/api/endpoints';
 import CategoriasTab from './CategoriasTab';
 import AtributosTab from './AtributosTab';
 
 const TABS = [
   { key: 'categorias', label: 'Categorías', component: CategoriasTab },
-  { key: 'atributos', label: 'Atributos', component: AtributosTab },
-  { key: 'colores', label: 'Colores', api: coloresApi, extra: [{ name: 'hex', label: 'Color (hex)', type: 'color' }] },
-  { key: 'tallas', label: 'Tallas', api: tallasApi, extra: [{ name: 'orden', label: 'Orden', type: 'number' }] },
+  { key: 'atributos', label: 'Atributos (colores, tallas...)', component: AtributosTab },
   { key: 'familias', label: 'Familias', api: familiasApi, extra: [] },
   { key: 'lineas', label: 'Líneas', api: lineasApi, extra: [] },
   { key: 'cortes', label: 'Cortes', api: cortesCatalogoApi, extra: [] },

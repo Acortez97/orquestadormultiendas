@@ -233,14 +233,14 @@ $routes = [
 
     // Reportes
     ['GET',    '/reportes/ventas',                  'ReporteController::ventas',            'reportes.ver'],
-    ['GET',    '/reportes/utilidad',                'ReporteController::utilidad',          'reportes.ver'],
+    ['GET',    '/reportes/utilidad',                'ReporteController::utilidad',          'reportes.costos'],
     ['GET',    '/reportes/por-lista',               'ReporteController::porLista',          'reportes.ver'],
     ['GET',    '/reportes/top-productos',           'ReporteController::topProductos',      'reportes.ver'],
     ['GET',    '/reportes/cortes-periodo',          'ReporteController::cortesPeriodo',     'reportes.ver'],
     ['GET',    '/reportes/cxc-antiguedad',          'ReporteController::cxcAntiguedad',     'reportes.ver'],
     ['GET',    '/reportes/cxp-proveedores',         'ReporteController::cxpProveedores',    'reportes.ver'],
     ['GET',    '/reportes/comisiones',              'ReporteController::comisiones',        'reportes.ver'],
-    ['GET',    '/reportes/existencias-valorizadas', 'ReporteController::existencias',       'reportes.ver'],
+    ['GET',    '/reportes/existencias-valorizadas', 'ReporteController::existencias',       'reportes.costos'],
     ['GET',    '/reportes/kardex',                  'ReporteController::kardex',            'reportes.ver'],
     ['GET',    '/reportes/compras',                 'ReporteController::compras',           'reportes.ver'],
     ['GET',    '/reportes/devoluciones',            'ReporteController::devoluciones',      'reportes.ver'],

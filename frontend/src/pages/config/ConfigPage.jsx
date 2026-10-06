@@ -29,8 +29,8 @@ export default function ConfigPage() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Campo label="Nombre" value={nombreCompleto} />
-            <Campo label="Email" value={user?.email} />
-            <Campo label="Rol" value={user?.rol} />
+            <Campo label="Correo de acceso" value={user?.login} />
+            <Campo label="Rol" value={user?.rol === 'admin_tienda' ? 'Administrador de la tienda' : 'Usuario'} />
             <Campo label="Estado" value={user?.is_active === 'No' ? 'Inactivo' : 'Activo'} />
           </div>
         </div>
@@ -41,11 +41,11 @@ export default function ConfigPage() {
             <div className="rounded-xl bg-primary-50 p-2.5">
               <BuildingOffice2Icon className="w-6 h-6 text-primary-600" />
             </div>
-            <h2 className="text-lg font-semibold text-slate-800">Empresa</h2>
+            <h2 className="text-lg font-semibold text-slate-800">Tienda</h2>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Campo label="Empresa" value={user?.empresa?.nombre || user?.empresa?.razon_social} />
-            <Campo label="RFC" value={user?.empresa?.rfc} />
+            <Campo label="Tienda" value={user?.tienda?.nombre} />
+            <Campo label="Subdominio de acceso" value={user?.tienda?.slug} />
           </div>
         </div>
       </div>

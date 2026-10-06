@@ -1025,7 +1025,7 @@ INSERT INTO modulo_acciones (modulo, accion, nombre) VALUES
   ('compras','aprobar','Aprobar'), ('compras','pagar','Registrar pagos'),
   ('finanzas','ver','Ver'), ('finanzas','crear','Registrar abonos y pagos'), ('finanzas','editar','Administrar bancos'),
   ('comisiones','ver','Ver'), ('comisiones','pagar','Marcar pagadas'),
-  ('reportes','ver','Ver'),
+  ('reportes','ver','Ver'), ('reportes','costos','Ver costos y utilidad'),
   ('facturacion','ver','Ver'), ('facturacion','crear','Facturar'),
   ('configuracion','ver','Ver'), ('configuracion','editar','Editar'),
   ('usuarios','ver','Ver'), ('usuarios','crear','Crear'), ('usuarios','editar','Editar y permisos'), ('usuarios','eliminar','Desactivar'),

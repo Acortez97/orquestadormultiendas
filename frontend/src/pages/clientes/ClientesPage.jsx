@@ -24,8 +24,8 @@ export default function ClientesPage() {
   const [tiendas, setTiendas] = useState([]);
   const [search, setSearch] = useState('');
   const [estadoCli, setEstadoCli] = useState(null);
-  const puedeCredito = hasPermiso('clientes.autorizar_credito') || user?.permisos?.admin;
-  const puedeCambiarPin = !!user?.permisos?.admin; // solo admin puede cambiar el PIN
+  const puedeCredito = hasPermiso('clientes.autorizar_credito');
+  const puedeCambiarPin = hasPermiso('configuracion.editar'); // el PIN de listas 4/5 es configuracion de la tienda
 
   const [pinEstado, setPinEstado] = useState(null);
   const [showPin, setShowPin] = useState(false);

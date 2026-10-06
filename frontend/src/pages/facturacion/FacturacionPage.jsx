@@ -20,7 +20,7 @@ export default function FacturacionPage() {
               Desde una venta se puede generar el CFDI (serie, folio, UUID, XML/PDF), cancelar y emitir
               complemento de pago (PUE/PPD) para ventas a crédito.
             </p>
-            <p className="text-xs text-slate-400">Empresa emisora: {user?.id_empresa?.nombre || user?.nombre || '—'}</p>
+            <p className="text-xs text-slate-400">Empresa emisora: {user?.tienda?.nombre || '—'}</p>
           </div>
         </div>
       </div>

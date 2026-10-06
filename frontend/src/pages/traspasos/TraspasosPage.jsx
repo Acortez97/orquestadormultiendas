@@ -279,7 +279,7 @@ export default function TraspasosPage() {
                   <PencilSquareIcon className="w-4 h-4" /> Editar
                 </button>
               )}
-              {hasPermiso('traspasos.aceptar') && (
+              {hasPermiso('traspasos.aprobar') && (
                 <button
                   className="btn-primary flex items-center gap-1 px-2 py-1 text-xs"
                   onClick={() => aceptar(r)}

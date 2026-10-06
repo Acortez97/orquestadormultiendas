@@ -441,12 +441,12 @@ export default function ApartadosPage() {
                 Editar
               </button>
             )}
-            {activo && hasPermiso('apartados.anticipo') && (
+            {activo && hasPermiso('apartados.editar') && (
               <button onClick={() => abrirAnticipo(r)} className="btn-outline px-2 py-1 text-xs">
                 Anticipo
               </button>
             )}
-            {activo && hasPermiso('apartados.liquidar') && (
+            {activo && hasPermiso('apartados.editar') && (
               <button onClick={() => abrirLiquidar(r)} className="btn-accent px-2 py-1 text-xs">
                 Liquidar
               </button>

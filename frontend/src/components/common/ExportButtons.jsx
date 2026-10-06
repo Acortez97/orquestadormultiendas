@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
-import { exportToExcel, exportToPdf } from '../../utils/exportTable';
+// Las librerias de Excel/PDF (pesadas) se descargan solo al exportar
+const exportador = () => import('../../utils/exportTable');
 
 /**
  * Botón "Exportar" con menú Excel / PDF para una tabla (columns + data).
@@ -19,9 +20,11 @@ export default function ExportButtons({ columns, data, name = 'reporte', title }
 
   const disabled = !data || data.length === 0;
 
-  const run = (fn) => {
+  const run = async (tipo) => {
     setOpen(false);
-    fn(columns, data, name, title || name);
+    const mod = await exportador();
+    if (tipo === 'excel') mod.exportToExcel(columns, data, name, title || name);
+    else mod.exportToPdf(columns, data, name, title || name);
   };
 
   return (
@@ -40,14 +43,14 @@ export default function ExportButtons({ columns, data, name = 'reporte', title }
           <button
             type="button"
             className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50"
-            onClick={() => run(exportToExcel)}
+            onClick={() => run('excel')}
           >
             Excel (.xlsx)
           </button>
           <button
             type="button"
             className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50"
-            onClick={() => run((c, d, n, t) => exportToPdf(c, d, n, t))}
+            onClick={() => run('pdf')}
           >
             PDF (.pdf)
           </button>

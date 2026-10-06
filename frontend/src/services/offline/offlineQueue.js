@@ -1,6 +1,10 @@
 import { openDB } from 'idb';
+import session from '../session';
 
-const DB_NAME  = 'levotek_offline';
+// Cola de operaciones offline. Cada operacion guarda su dueño (correo de acceso):
+// solo se sincroniza con la sesion de ESE usuario, para que en una PC compartida
+// nunca se envien operaciones de una tienda con la sesion de otra.
+const DB_NAME  = 'ot_offline';
 const DB_VER   = 1;
 const STORE    = 'pending_ops';
 
@@ -15,17 +19,22 @@ async function getDB() {
 }
 
 /**
- * Encola una operación offline.
+ * Encola una operación offline del usuario actual.
  * @param {{ type: 'venta', payload: object, id_referencia: string }} op
  */
 export async function enqueue(op) {
+  const owner = session.owner();
+  if (!owner) throw new Error('Sin sesion: no se puede encolar la operacion');
   const db = await getDB();
-  await db.add(STORE, { ...op, status: 'pending', createdAt: Date.now() });
+  await db.add(STORE, { ...op, owner, status: 'pending', createdAt: Date.now() });
 }
 
+/** Operaciones pendientes del usuario actual */
 export async function getPending() {
+  const owner = session.owner();
+  if (!owner) return [];
   const db = await getDB();
-  return db.getAll(STORE);
+  return (await db.getAll(STORE)).filter((op) => op.owner === owner);
 }
 
 export async function markDone(id) {
@@ -34,6 +43,5 @@ export async function markDone(id) {
 }
 
 export async function getCount() {
-  const db = await getDB();
-  return db.count(STORE);
+  return (await getPending()).length;
 }

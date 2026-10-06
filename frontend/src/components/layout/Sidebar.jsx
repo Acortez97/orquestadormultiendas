@@ -14,7 +14,7 @@ import clsx from 'clsx';
 const NAV = [
   { label: 'Dashboard',       path: '/dashboard',     icon: Squares2X2Icon,            permiso: null },
   { label: 'Ventas',          tipo: 'section' },
-  { label: 'Punto de Venta',  path: '/pos',           icon: BuildingStorefrontIcon,    permiso: 'ventas.vender' },
+  { label: 'Punto de Venta',  path: '/pos',           icon: BuildingStorefrontIcon,    permiso: 'ventas.crear' },
   { label: 'Ventas',          path: '/ventas',        icon: ReceiptPercentIcon,        permiso: 'ventas.ver' },
   { label: 'Apartados',       path: '/apartados',     icon: BookmarkIcon,              permiso: 'apartados.ver' },
   { label: 'Devoluciones',    path: '/devoluciones',  icon: ArrowUturnLeftIcon,        permiso: 'devoluciones.ver' },
@@ -23,8 +23,8 @@ const NAV = [
   { label: 'Catálogos',       tipo: 'section' },
   { label: 'Artículos',       path: '/articulos',     icon: CubeIcon,                  permiso: 'catalogos.ver' },
   { label: 'Clientes',        path: '/clientes',      icon: UsersIcon,                 permiso: 'clientes.ver' },
-  { label: 'Proveedores',     path: '/proveedores',   icon: TruckIcon,                 permiso: 'catalogos.ver' },
-  { label: 'Empleados',       path: '/empleados',     icon: UserGroupIcon,             permiso: 'catalogos.ver' },
+  { label: 'Proveedores',     path: '/proveedores',   icon: TruckIcon,                 permiso: 'proveedores.ver' },
+  { label: 'Empleados',       path: '/empleados',     icon: UserGroupIcon,             permiso: 'empleados.ver' },
   { label: 'Catálogos base',  path: '/catalogos',     icon: TagIcon,                   permiso: 'catalogos.ver' },
   { label: 'Inventario',      tipo: 'section' },
   { label: 'Almacenes',       path: '/almacenes',     icon: BuildingOffice2Icon,       permiso: 'almacen.ver' },
@@ -40,10 +40,10 @@ const NAV = [
   { label: 'Reportes',        tipo: 'section' },
   { label: 'Dashboard productos', path: '/productos-dashboard', icon: Squares2X2Icon,     permiso: 'reportes.ver' },
   { label: 'Reportes',        path: '/reportes',      icon: ChartBarIcon,              permiso: 'reportes.ver' },
-  { label: 'Admin',           tipo: 'section' },
-  { label: 'Configuración',   path: '/config',        icon: Cog6ToothIcon,             permiso: 'config_sistema.ver' },
-  { label: 'Usuarios',        path: '/admin/usuarios',icon: UsersIcon,                 permiso: 'admin' },
-  { label: 'Bitácora',        path: '/admin/bitacora',icon: ShieldCheckIcon,           permiso: 'admin' },
+  { label: 'Mi tienda',       tipo: 'section' },
+  { label: 'Configuración',   path: '/config',        icon: Cog6ToothIcon,             permiso: 'configuracion.ver' },
+  { label: 'Usuarios',        path: '/usuarios',      icon: UsersIcon,                 permiso: 'usuarios.ver' },
+  { label: 'Bitácora',        path: '/bitacora',      icon: ShieldCheckIcon,           permiso: 'bitacora.ver' },
 ];
 
 function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse }) {
@@ -118,9 +118,11 @@ function SidebarContent({ items, isCollapsed, onToggleCollapse }) {
 }
 
 function LogoMarca() {
+  const { user } = useAuth();
   return (
-    <div className="flex items-center gap-2">
-      <img src="/logo-light.svg" alt="MultiTienda" className="h-7 object-contain" />
+    <div className="min-w-0">
+      <img src={user?.tienda?.logo_url || '/logo-light.svg'} alt="" className="h-7 object-contain" />
+      {user?.tienda?.nombre && <p className="mt-1 truncate text-xs font-medium text-primary-200">{user.tienda.nombre}</p>}
     </div>
   );
 }

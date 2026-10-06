@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import {
   Bars3Icon, BellIcon, UserCircleIcon,
-  ArrowRightOnRectangleIcon, ChevronDownIcon,
+  ArrowRightOnRectangleIcon, ChevronDownIcon, KeyIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocket } from '../../contexts/SocketContext';
@@ -101,7 +101,7 @@ function Header({ onMenuClick }) {
             <UserCircleIcon className="w-7 h-7 text-slate-400" />
             <div className="hidden sm:block text-left">
               <p className="text-sm font-medium text-slate-900 leading-none">{user?.nombre}</p>
-              <p className="text-xs text-slate-500 mt-0.5 capitalize">{user?.permisos?.admin ? 'Admin' : 'Usuario'}</p>
+              <p className="text-xs text-slate-500 mt-0.5">{user?.rol === 'admin_tienda' ? 'Administrador' : 'Usuario'}{user?.tienda?.nombre ? ` · ${user.tienda.nombre}` : ''}</p>
             </div>
             <ChevronDownIcon className="w-4 h-4 text-slate-400" />
           </button>
@@ -110,8 +110,17 @@ function Header({ onMenuClick }) {
             <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden z-50">
               <div className="px-4 py-3 border-b border-slate-100">
                 <p className="text-sm font-semibold text-slate-900">{user?.nombre}</p>
-                <p className="text-xs text-slate-500 truncate">{user?.email}</p>
+                <p className="text-xs text-slate-500 truncate">{user?.login}</p>
               </div>
+              {!user?.soporte && (
+                <button
+                  onClick={() => { setShowUser(false); navigate('/cambiar-password'); }}
+                  className="w-full flex items-center gap-2 px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <KeyIcon className="w-4 h-4" />
+                  Cambiar contraseña
+                </button>
+              )}
               <button
                 onClick={handleLogout}
                 className="w-full flex items-center gap-2 px-4 py-3 text-sm text-danger-600 hover:bg-danger-50 transition-colors"

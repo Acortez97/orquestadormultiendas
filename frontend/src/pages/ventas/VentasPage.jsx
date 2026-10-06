@@ -273,7 +273,7 @@ export default function VentasPage() {
               <button className="btn-secondary" onClick={() => setDetalle(null)}>
                 Cerrar
               </button>
-              {detalle.estado === 'completada' && hasPermiso('ventas.anular') && (
+              {detalle.estado === 'completada' && hasPermiso('ventas.cancelar') && (
                 <button className="btn-danger" disabled={cancelando} onClick={cancelarVenta}>
                   {cancelando ? 'Cancelando…' : 'Cancelar venta'}
                 </button>

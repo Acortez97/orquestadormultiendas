@@ -16,8 +16,6 @@ function crudCatalogo(ruta) {
     eliminar: (id) => del(`/catalogos/${ruta}/${id}`),
   };
 }
-export const coloresApi = crudCatalogo('colores');
-export const tallasApi = crudCatalogo('tallas');
 export const familiasApi = crudCatalogo('familias');
 export const lineasApi = crudCatalogo('lineas');
 export const cortesCatalogoApi = crudCatalogo('cortes');
@@ -216,4 +214,37 @@ export const configApi = {
   // PIN de autorización para Lista de precios 4/5
   estadoPinListaAlta: () => get('/config-sistema/pin-lista-alta'),
   cambiarPinListaAlta: (pin) => put('/config-sistema/pin-lista-alta', { pin }),
+};
+
+// ---- Usuarios de la tienda (solo admin de tienda) ----
+export const usuariosTiendaApi = {
+  modulos: () => get('/auth/modulos-tienda'),
+  listar: () => get('/auth/usuarios'),
+  crear: (data) => post('/auth/usuarios', data),
+  actualizar: (id, data) => put(`/auth/usuarios/${id}`, data),
+  desactivar: (id) => del(`/auth/usuarios/${id}`),
+  resetPassword: (id, newPassword) => post(`/auth/usuarios/${id}/reset-password`, { newPassword }),
+};
+
+// ---- Plataforma (solo superadmin) ----
+export const plataformaApi = {
+  dashboard: () => get('/plataforma/dashboard'),
+  modulos: () => get('/plataforma/modulos'),
+  tiendas: (params) => get('/plataforma/tiendas', params),
+  tienda: (id) => get(`/plataforma/tiendas/${id}`),
+  crearTienda: (data) => post('/plataforma/tiendas', data),
+  editarTienda: (id, data) => put(`/plataforma/tiendas/${id}`, data),
+  estadoTienda: (id, isActive) => patch(`/plataforma/tiendas/${id}/estado`, { is_active: isActive }),
+  modulosTienda: (id) => get(`/plataforma/tiendas/${id}/modulos`),
+  guardarModulos: (id, modulos) => put(`/plataforma/tiendas/${id}/modulos`, { modulos }),
+  entrar: (id) => post(`/plataforma/tiendas/${id}/entrar`),
+  conciliar: (id) => get(`/plataforma/tiendas/${id}/conciliar`),
+  exportar: (id) => apiClient.get(`/plataforma/tiendas/${id}/export`, { responseType: 'blob' }),
+  usuariosTienda: (id) => get(`/plataforma/tiendas/${id}/usuarios`),
+  crearUsuario: (idTienda, data) => post(`/plataforma/tiendas/${idTienda}/usuarios`, data),
+  usuarios: (params) => get('/plataforma/usuarios', params),
+  editarUsuario: (id, data) => put(`/plataforma/usuarios/${id}`, data),
+  desactivarUsuario: (id) => del(`/plataforma/usuarios/${id}`),
+  resetPassword: (id, newPassword) => post(`/plataforma/usuarios/${id}/reset-password`, newPassword ? { newPassword } : {}),
+  auditLog: (params) => get('/plataforma/audit-log', params),
 };

@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import { useOffline } from '../../contexts/OfflineContext';
 import OfflineBanner from '../common/OfflineBanner';
+import { useAuth } from '../../contexts/AuthContext';
 
 const SALDO_URL = import.meta.env.VITE_URL_SALDO;
 
@@ -27,6 +28,22 @@ function PaymentBanner() {
   );
 }
 
+/** Aviso permanente cuando el superadmin opera una tienda (modo soporte) */
+function SoporteBanner() {
+  const { user, salirSoporte } = useAuth();
+  const navigate = useNavigate();
+  if (!user?.soporte) return null;
+  return (
+    <div className="flex w-full flex-wrap items-center justify-center gap-3 bg-amber-500 px-4 py-2 text-sm font-semibold text-amber-950">
+      <span>Modo soporte: estás operando la tienda «{user.tienda?.nombre}». Todas las acciones quedan en su bitácora.</span>
+      <button className="rounded-md bg-amber-950/90 px-3 py-1 text-xs text-white hover:bg-amber-950"
+        onClick={() => { salirSoporte(); navigate('/admin/tiendas', { replace: true }); }}>
+        Volver al panel de administración
+      </button>
+    </div>
+  );
+}
+
 function AppLayout() {
   const [sidebarOpen, setSidebarOpen]           = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -34,6 +51,7 @@ function AppLayout() {
 
   return (
     <div className="min-h-screen bg-[#f2f5fc]">
+      <SoporteBanner />
       {!isOnline && <OfflineBanner />}
       <PaymentBanner />
 
