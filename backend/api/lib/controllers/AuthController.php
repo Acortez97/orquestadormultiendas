@@ -1,150 +1,154 @@
 <?php
+// ============================================================
+// Sesion (login por correo de acceso) y usuarios de la tienda (admin_tienda).
+// ============================================================
 class AuthController
 {
-    /** Da formato al usuario para el frontend (sin password) */
-    public static function formatUser(array $u): array
+    /** Hash de relleno: se verifica aunque el usuario no exista, para no revelar por tiempo de respuesta si existe */
+    const HASH_RELLENO = '$2y$12$Ro0kh9jgO3utgPMQ5tjynOtyWu7ifolgOOgJBon1NLOxiQ0jTeWFG';
+    const MAX_FALLOS_LOGIN = 5;    // por correo, en la ventana
+    const MAX_FALLOS_IP = 20;      // por IP, en la ventana
+    const VENTANA_MIN = 15;
+
+    /** Datos de sesion para el front: usuario + permisos efectivos + tienda */
+    private static function sesion(array $u, array $permisos, ?array $emp, bool $soporte = false): array
     {
-        $permisos = $u['permisos'] ? json_decode($u['permisos'], true) : null;
-        if (!is_array($permisos)) $permisos = ['admin' => ($u['rol'] === 'admin')];
-        return [
-            '_id'          => (string) $u['id'],
-            'nombre'       => $u['nombre'],
-            'apellido'     => $u['apellido'],
-            'email'        => $u['email'],
-            'rol'          => $u['rol'],
-            'is_active'    => $u['is_active'],
-            'id_tienda'    => $u['id_tienda'] !== null ? (string) $u['id_tienda'] : null,
-            'id_empresa'   => (string) $u['id_empresa'],
-            'permisos'     => $permisos,
-            'nombreCompleto' => trim($u['nombre'] . ' ' . $u['apellido']),
-            'ultimo_acceso' => $u['ultimo_acceso'] ?? null,
-            'createdAt'    => $u['created_at'] ?? null,
-            'updatedAt'    => $u['updated_at'] ?? null,
-        ];
+        $data = Usuarios::formatear($u, $permisos);
+        $data['permisos']['admin'] = false;   // compat: el front ya no usa un "admin" global
+        $data['es_superadmin'] = $u['rol'] === 'superadmin' && !$soporte;
+        $data['soporte'] = $soporte;           // superadmin operando como tienda
+        if ($soporte) $data['rol'] = 'admin_tienda';
+        $data['tienda'] = $emp ? ['nombre' => $emp['nombre'], 'slug' => $emp['slug'], 'logo_url' => $emp['logo_url']] : null;
+        return $data;
     }
 
     public static function login(array $p, array $ctx): void
     {
-        $b = Http::body();
-        $email = strtolower(trim($b['email'] ?? ''));
+        $cfg = $ctx['cfg'];
+        $b = Http::bodyCrudo();
+        $login = strtolower(trim((string) ($b['email'] ?? $b['login'] ?? '')));
         $pass  = (string) ($b['password'] ?? '');
-        if ($email === '' || $pass === '') throw new ApiError('Credenciales invalidas', 401, 'UNAUTHORIZED');
+        $ip    = substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
 
-        $u = Db::one('SELECT * FROM users WHERE email=?', [$email]);
-        if (!$u || !password_verify($pass, $u['password'])) throw new ApiError('Credenciales invalidas', 401, 'UNAUTHORIZED');
-        if ($u['is_active'] !== 'Si') throw new ApiError('Usuario desactivado', 401, 'UNAUTHORIZED');
+        // Bloqueo temporal por intentos fallidos
+        $f = Db::one(
+            'SELECT SUM(login = ?) por_login, COUNT(*) por_ip FROM login_intentos
+             WHERE exito = 0 AND created_at > (NOW() - INTERVAL ' . self::VENTANA_MIN . ' MINUTE) AND (login = ? OR ip = ?)',
+            [$login, $login, $ip]);
+        if ((int) $f['por_login'] >= self::MAX_FALLOS_LOGIN || (int) $f['por_ip'] >= self::MAX_FALLOS_IP) {
+            throw new ApiError('Demasiados intentos fallidos. Espera ' . self::VENTANA_MIN . ' minutos e intenta de nuevo.', 429, 'TOO_MANY_ATTEMPTS');
+        }
 
-        Db::run('UPDATE users SET ultimo_acceso=NOW() WHERE id=?', [$u['id']]);
+        $u = null; $emp = null;
+        $sep = LoginId::separar($login, $cfg['login_domain']);
+        if ($sep) {
+            if ($sep['slug'] === null) {
+                $u = Db::one("SELECT * FROM users WHERE id_empresa IS NULL AND rol = 'superadmin' AND usuario = ?", [$sep['usuario']]);
+            } else {
+                $emp = Db::one('SELECT * FROM empresas WHERE slug = ?', [$sep['slug']]);
+                if ($emp) $u = Db::one('SELECT * FROM users WHERE id_empresa = ? AND usuario = ?', [(int) $emp['id'], $sep['usuario']]);
+            }
+        }
+        $valido = password_verify($pass, $u['password'] ?? self::HASH_RELLENO) && $u && $u['is_active'] === 'Si';
+        Db::run('INSERT INTO login_intentos (login, ip, exito) VALUES (?,?,?)', [$login, $ip, $valido ? 1 : 0]);
+        if (!$valido) throw new ApiError('Correo o contrasena incorrectos', 401, 'UNAUTHORIZED');
+        if ($emp && $emp['is_active'] !== 'Si') throw new ApiError('Cuenta suspendida, contacta al administrador', 403, 'SUSPENDED');
 
-        $userData = self::formatUser($u);
-        $token = Jwt::encode([
-            'id'         => (string) $u['id'],
-            'email'      => $u['email'],
-            'nombre'     => $u['nombre'],
-            'apellido'   => $u['apellido'],
-            'rol'        => $u['rol'],
-            'id_empresa' => (string) $u['id_empresa'],
-            'id_tienda'  => $u['id_tienda'] !== null ? (string) $u['id_tienda'] : null,
-            'permisos'   => $userData['permisos'],
-        ], $ctx['cfg']['jwt_secret'], $ctx['cfg']['jwt_expira']);
+        Db::run('UPDATE users SET ultimo_acceso = NOW() WHERE id = ?', [(int) $u['id']]);
+        $token = Jwt::encode(['u' => Tenant::encSesion((int) $u['id']), 'v' => (int) $u['token_version']],
+            $cfg['jwt_secret'], $cfg['jwt_expira']);
 
-        Http::ok(['token' => $token, 'user' => $userData], 'Inicio de sesion exitoso');
+        if ($emp) {
+            Tenant::activarTienda($emp);
+            $permisos = Permisos::efectivos(['id' => (int) $u['id'], 'id_empresa' => (int) $emp['id'], 'rol' => $u['rol']]);
+        } else {
+            Tenant::activarPlataforma();
+            $permisos = [];
+        }
+        Http::ok(['token' => $token, 'user' => self::sesion($u, $permisos, $emp)], 'Inicio de sesion exitoso');
     }
 
     public static function me(array $p, array $ctx): void
     {
-        $u = Db::one('SELECT * FROM users WHERE id=?', [(int) $ctx['user']['id']]);
-        if (!$u) throw new ApiError('Usuario no encontrado', 404, 'NOT_FOUND');
-        Http::ok(self::formatUser($u));
+        $id = $ctx['user']['id'] ?? $ctx['user']['act_as'];
+        $u = Db::one('SELECT * FROM users WHERE id = ?', [$id]);
+        Http::ok(self::sesion($u, $ctx['permisos'], Tenant::empresa(), !empty($ctx['user']['act_as'])));
     }
 
+    /** Cambia la contrasena propia. Cierra las demas sesiones y devuelve un token nuevo. */
     public static function changePassword(array $p, array $ctx): void
     {
-        $b = Http::body();
+        if (!empty($ctx['user']['act_as'])) throw new ApiError('No disponible en modo soporte', 400, 'VALIDATION');
+        $b = Http::bodyCrudo();
         $cur = (string) ($b['currentPassword'] ?? '');
         $new = (string) ($b['newPassword'] ?? '');
-        if (strlen($new) < 6) throw new ApiError('La nueva contrasena debe tener al menos 6 caracteres', 400, 'VALIDATION');
+        if (strlen($new) < Usuarios::PASS_MIN) throw new ApiError('La nueva contrasena debe tener al menos ' . Usuarios::PASS_MIN . ' caracteres', 400, 'VALIDATION');
+        if ($new === $cur) throw new ApiError('La nueva contrasena debe ser distinta a la actual', 400, 'VALIDATION');
 
-        $u = Db::one('SELECT * FROM users WHERE id=?', [(int) $ctx['user']['id']]);
-        if (!$u || !password_verify($cur, $u['password'])) throw new ApiError('Contrasena actual incorrecta', 400, 'VALIDATION');
+        $u = Db::one('SELECT * FROM users WHERE id = ?', [(int) $ctx['user']['id']]);
+        if (!password_verify($cur, $u['password'])) throw new ApiError('Contrasena actual incorrecta', 400, 'VALIDATION');
 
-        Db::run('UPDATE users SET password=? WHERE id=?', [password_hash($new, PASSWORD_BCRYPT), $u['id']]);
-        Http::ok(null, 'Contrasena actualizada exitosamente');
+        Db::run('UPDATE users SET password = ?, debe_cambiar_password = 0, token_version = token_version + 1 WHERE id = ?',
+            [password_hash($new, PASSWORD_BCRYPT), (int) $u['id']]);
+        $token = Jwt::encode(['u' => Tenant::encSesion((int) $u['id']), 'v' => (int) $u['token_version'] + 1],
+            $ctx['cfg']['jwt_secret'], $ctx['cfg']['jwt_expira']);
+        Http::ok(['token' => $token], 'Contrasena actualizada exitosamente');
+    }
+
+    // ===== Usuarios de la tienda (solo admin_tienda; ver Permisos 'admin:usuarios') =====
+
+    /** Modulos activos de la tienda con sus acciones (para el editor de permisos) */
+    public static function modulosTienda(array $p, array $ctx): void
+    {
+        $activos = Permisos::modulosActivos(Tenant::id());
+        $out = [];
+        foreach (Db::all('SELECT m.clave, m.nombre, ma.accion, ma.nombre accion_nombre FROM modulos m
+                          JOIN modulo_acciones ma ON ma.modulo = m.clave ORDER BY m.orden, ma.accion') as $r) {
+            if (!in_array($r['clave'], $activos, true)) continue;
+            $out[$r['clave']]['clave'] = $r['clave'];
+            $out[$r['clave']]['nombre'] = $r['nombre'];
+            $out[$r['clave']]['acciones'][] = ['clave' => $r['accion'], 'nombre' => $r['accion_nombre']];
+        }
+        $emp = Tenant::empresa();
+        Http::ok(['modulos' => array_values($out), 'dominio' => $emp['slug'] . '.' . $ctx['cfg']['login_domain']]);
     }
 
     public static function listar(array $p, array $ctx): void
     {
-        $rows = Db::all('SELECT * FROM users WHERE id_empresa=? ORDER BY is_active DESC, nombre ASC',
-            [(int) $ctx['user']['id_empresa']]);
-        Http::ok(array_map([self::class, 'formatUser'], $rows));
+        Http::ok(Usuarios::listar(Tenant::id()));
     }
 
     public static function crear(array $p, array $ctx): void
     {
-        $b = Http::body();
-        $email = strtolower(trim($b['email'] ?? ''));
-        if ($email === '' || strlen($b['password'] ?? '') < 6 || trim($b['nombre'] ?? '') === '')
-            throw new ApiError('Nombre, email y contrasena (min 6) son obligatorios', 400, 'VALIDATION');
-        if (Db::one('SELECT id FROM users WHERE email=?', [$email]))
-            throw new ApiError('Ya existe un usuario con ese email', 409, 'CONFLICT');
-
-        $id = Db::insert(
-            'INSERT INTO users (id_empresa,nombre,apellido,email,password,rol,is_active,permisos,id_tienda)
-             VALUES (?,?,?,?,?,?,?,?,?)',
-            [
-                (int) $ctx['user']['id_empresa'],
-                trim($b['nombre']),
-                trim($b['apellido'] ?? ''),
-                $email,
-                password_hash($b['password'], PASSWORD_BCRYPT),
-                ($b['rol'] ?? 'usuario') === 'admin' ? 'admin' : 'usuario',
-                ($b['is_active'] ?? 'Si') === 'No' ? 'No' : 'Si',
-                isset($b['permisos']) ? json_encode($b['permisos'], JSON_UNESCAPED_UNICODE) : null,
-                id_or_null($b['id_tienda'] ?? null),
-            ]
-        );
-        $u = Db::one('SELECT * FROM users WHERE id=?', [$id]);
-        Http::created(self::formatUser($u), 'Usuario');
+        $u = Usuarios::crear(Tenant::id(), Http::body(), ['usuario'], $ctx['cfg']['login_domain']);
+        Ledger::audit($ctx, 'crear', 'usuario', $u['id'], 'Usuario ' . $u['login']);
+        Http::created(self::fila($u), 'Usuario');
     }
 
     public static function actualizar(array $p, array $ctx): void
     {
-        $b = Http::body();
-        $id = (int) $p['id'];
-        $u = Db::one('SELECT * FROM users WHERE id=? AND id_empresa=?', [$id, (int) $ctx['user']['id_empresa']]);
-        if (!$u) throw new ApiError('Usuario no encontrado', 404, 'NOT_FOUND');
-
-        Db::run(
-            'UPDATE users SET nombre=?, apellido=?, email=?, rol=?, is_active=?, permisos=?, id_tienda=? WHERE id=?',
-            [
-                trim($b['nombre'] ?? $u['nombre']),
-                trim($b['apellido'] ?? $u['apellido']),
-                strtolower(trim($b['email'] ?? $u['email'])),
-                ($b['rol'] ?? $u['rol']) === 'admin' ? 'admin' : 'usuario',
-                ($b['is_active'] ?? $u['is_active']) === 'No' ? 'No' : 'Si',
-                isset($b['permisos']) ? json_encode($b['permisos'], JSON_UNESCAPED_UNICODE) : $u['permisos'],
-                array_key_exists('id_tienda', $b) ? id_or_null($b['id_tienda']) : $u['id_tienda'],
-                $id,
-            ]
-        );
-        $u = Db::one('SELECT * FROM users WHERE id=?', [$id]);
-        Http::updated(self::formatUser($u), 'Usuario');
+        $u = Usuarios::actualizar(Tenant::id(), (int) $p['id'], Http::body(), true, $ctx['user']['id'], $ctx['cfg']['login_domain']);
+        Ledger::audit($ctx, 'editar', 'usuario', $u['id'], 'Usuario ' . $u['login']);
+        Http::updated(self::fila($u), 'Usuario');
     }
 
     public static function desactivar(array $p, array $ctx): void
     {
-        Db::run('UPDATE users SET is_active=\'No\' WHERE id=? AND id_empresa=?',
-            [(int) $p['id'], (int) $ctx['user']['id_empresa']]);
+        Usuarios::desactivar(Tenant::id(), (int) $p['id'], true, $ctx['user']['id']);
+        Ledger::audit($ctx, 'desactivar', 'usuario', (int) $p['id'], 'Usuario desactivado');
         Http::deleted('Usuario');
     }
 
     public static function resetPassword(array $p, array $ctx): void
     {
-        $b = Http::body();
-        $new = (string) ($b['newPassword'] ?? '');
-        if (strlen($new) < 6) throw new ApiError('La contrasena debe tener al menos 6 caracteres', 400, 'VALIDATION');
-        Db::run('UPDATE users SET password=? WHERE id=? AND id_empresa=?',
-            [password_hash($new, PASSWORD_BCRYPT), (int) $p['id'], (int) $ctx['user']['id_empresa']]);
+        Usuarios::resetPassword(Tenant::id(), (int) $p['id'], (string) (Http::bodyCrudo()['newPassword'] ?? ''), true, $ctx['user']['id']);
+        Ledger::audit($ctx, 'reset_password', 'usuario', (int) $p['id'], 'Contrasena restablecida');
         Http::ok(null, 'Contrasena restablecida');
+    }
+
+    private static function fila(array $u): array
+    {
+        $perms = Usuarios::permisosAsignados(Tenant::id(), [(int) $u['id']]);
+        return Usuarios::formatear($u, $perms[(int) $u['id']] ?? []);
     }
 }

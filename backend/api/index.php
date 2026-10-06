@@ -1,7 +1,14 @@
 <?php
 // ============================================================
-// LEVOTEK API — Front controller
+// Orquestador MultiTiendas API — Front controller
 // Responde bajo /api/v1/...  (mismo dominio que el frontend)
+//
+// Flujo de cada peticion:
+//   1) ruta -> permiso declarado (sin permiso declarado = denegado)
+//   2) JWT -> usuario recargado de la BD (activo + token_version)
+//   3) tienda activa: la del usuario, o la de "entrar como tienda" del superadmin
+//   4) ids opacos de ruta/query/body -> ids internos (Tenant)
+//   5) permiso efectivo (modulos de la tienda ∩ permisos del usuario)
 // ============================================================
 
 error_reporting(E_ALL);
@@ -12,12 +19,15 @@ ini_set('display_errors', $cfg['debug'] ? '1' : '0');
 require __DIR__ . '/lib/Db.php';
 require __DIR__ . '/lib/Jwt.php';
 require __DIR__ . '/lib/Http.php';
+require __DIR__ . '/lib/Tenant.php';
+require __DIR__ . '/lib/LoginId.php';
+require __DIR__ . '/lib/Permisos.php';
 require __DIR__ . '/lib/Pricing.php';
 require __DIR__ . '/lib/Ledger.php';
+require __DIR__ . '/lib/Seeder.php';
+require __DIR__ . '/lib/Usuarios.php';
 
 // ---- CORS ----
-// Con withCredentials el navegador prohibe responder '*': hay que devolver el
-// origen exacto de la peticion. Si la config es '*', reflejamos el Origin entrante.
 $origin = $cfg['cors_origin'];
 if ($origin === '*') {
     $reqOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
@@ -43,6 +53,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
 if (strlen((string) $cfg['jwt_secret']) < 32) {
     Http::fail('Servidor sin configurar: falta jwt_secret (ver lib/config.local.example.php)', 500, 'CONFIG_ERROR');
 }
+Tenant::configurar($cfg);
 
 // ---- Conexion BD ----
 try {
@@ -68,175 +79,204 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 // ---- Cargar controladores ----
 foreach (glob(__DIR__ . '/lib/controllers/*.php') as $f) require $f;
 
-// ---- Tabla de rutas: [metodo, patron, handler, publica?] ----
-// :x = parametro; {tipo} = comodin de catalogo
+// ---- Tabla de rutas: [metodo, patron, handler, permiso] ----
+// Permiso:
+//   'publico'          sin sesion
+//   'sesion'           cualquier usuario autenticado (tienda o superadmin)
+//   'tienda'           cualquier usuario de la tienda (o superadmin entrando como tienda)
+//   'modulo.accion'    permiso efectivo; un array = basta cualquiera de ellos
+//   'admin:modulo'     solo admin_tienda (o superadmin entrando como tienda) y con el modulo activo
+//   'plataforma'       solo superadmin (panel de administracion general)
+// :x = parametro (ids opacos); {tipo} = comodin de catalogo
+$INV_VER = ['almacen.ver', 'ventas.crear', 'apartados.crear', 'traspasos.crear', 'compras.crear', 'devoluciones.crear'];
 $routes = [
-    // Auth
-    ['POST',   '/auth/login',                 'AuthController::login',          true],
-    ['GET',    '/auth/me',                    'AuthController::me'],
-    ['POST',   '/auth/change-password',       'AuthController::changePassword'],
-    ['GET',    '/auth/usuarios',              'AuthController::listar'],
-    ['POST',   '/auth/usuarios',              'AuthController::crear'],
-    ['PUT',    '/auth/usuarios/:id',          'AuthController::actualizar'],
-    ['DELETE', '/auth/usuarios/:id',          'AuthController::desactivar'],
-    ['POST',   '/auth/usuarios/:id/reset-password', 'AuthController::resetPassword'],
+    // Auth / sesion
+    ['POST',   '/auth/login',                        'AuthController::login',          'publico'],
+    ['GET',    '/auth/me',                           'AuthController::me',             'sesion'],
+    ['POST',   '/auth/change-password',              'AuthController::changePassword', 'sesion'],
+    // Usuarios de la tienda (los administra el admin_tienda)
+    ['GET',    '/auth/modulos-tienda',               'AuthController::modulosTienda',  'admin:usuarios'],
+    ['GET',    '/auth/usuarios',                     'AuthController::listar',         'admin:usuarios'],
+    ['POST',   '/auth/usuarios',                     'AuthController::crear',          'admin:usuarios'],
+    ['PUT',    '/auth/usuarios/:id',                 'AuthController::actualizar',     'admin:usuarios'],
+    ['DELETE', '/auth/usuarios/:id',                 'AuthController::desactivar',     'admin:usuarios'],
+    ['POST',   '/auth/usuarios/:id/reset-password',  'AuthController::resetPassword',  'admin:usuarios'],
 
     // Catalogos simples
-    ['GET',    '/catalogos/{tipo}',           'CatalogoController::listar'],
-    ['POST',   '/catalogos/{tipo}',           'CatalogoController::crear'],
-    ['GET',    '/catalogos/{tipo}/:id',       'CatalogoController::obtener'],
-    ['PUT',    '/catalogos/{tipo}/:id',       'CatalogoController::actualizar'],
-    ['DELETE', '/catalogos/{tipo}/:id',       'CatalogoController::eliminar'],
+    ['GET',    '/catalogos/{tipo}',           'CatalogoController::listar',     'tienda'],
+    ['POST',   '/catalogos/{tipo}',           'CatalogoController::crear',      'catalogos.crear'],
+    ['GET',    '/catalogos/{tipo}/:id',       'CatalogoController::obtener',    'tienda'],
+    ['PUT',    '/catalogos/{tipo}/:id',       'CatalogoController::actualizar', 'catalogos.editar'],
+    ['DELETE', '/catalogos/{tipo}/:id',       'CatalogoController::eliminar',   'catalogos.eliminar'],
 
-    // Atributos de variante (MultiTienda)
-    ['GET',    '/atributos',                  'AtributoController::listar'],
-    ['POST',   '/atributos',                  'AtributoController::crear'],
-    ['GET',    '/atributos/:id/valores',      'AtributoController::listarValores'],
-    ['POST',   '/atributos/:id/valores',      'AtributoController::crearValor'],
-    ['PUT',    '/atributos/valores/:id',      'AtributoController::actualizarValor'],
-    ['DELETE', '/atributos/valores/:id',      'AtributoController::eliminarValor'],
-    ['PUT',    '/atributos/:id',              'AtributoController::actualizar'],
-    ['DELETE', '/atributos/:id',              'AtributoController::eliminar'],
+    // Atributos de variante
+    ['GET',    '/atributos',                  'AtributoController::listar',         'tienda'],
+    ['POST',   '/atributos',                  'AtributoController::crear',          'catalogos.crear'],
+    ['GET',    '/atributos/:id/valores',      'AtributoController::listarValores',  'tienda'],
+    ['POST',   '/atributos/:id/valores',      'AtributoController::crearValor',     'catalogos.crear'],
+    ['PUT',    '/atributos/valores/:id',      'AtributoController::actualizarValor','catalogos.editar'],
+    ['DELETE', '/atributos/valores/:id',      'AtributoController::eliminarValor',  'catalogos.eliminar'],
+    ['PUT',    '/atributos/:id',              'AtributoController::actualizar',     'catalogos.editar'],
+    ['DELETE', '/atributos/:id',              'AtributoController::eliminar',       'catalogos.eliminar'],
 
-    // Categorias (MultiTienda)
-    ['GET',    '/categorias',                 'CategoriaController::listar'],
-    ['POST',   '/categorias',                 'CategoriaController::crear'],
-    ['GET',    '/categorias/:id',             'CategoriaController::obtener'],
-    ['PUT',    '/categorias/:id',             'CategoriaController::actualizar'],
-    ['DELETE', '/categorias/:id',             'CategoriaController::eliminar'],
+    // Categorias
+    ['GET',    '/categorias',                 'CategoriaController::listar',     'tienda'],
+    ['POST',   '/categorias',                 'CategoriaController::crear',      'catalogos.crear'],
+    ['GET',    '/categorias/:id',             'CategoriaController::obtener',    'tienda'],
+    ['PUT',    '/categorias/:id',             'CategoriaController::actualizar', 'catalogos.editar'],
+    ['DELETE', '/categorias/:id',             'CategoriaController::eliminar',   'catalogos.eliminar'],
 
     // Articulos
-    ['GET',    '/articulos',                  'ArticuloController::listar'],
-    ['GET',    '/articulos/buscar',           'ArticuloController::buscar'],
-    ['GET',    '/articulos/scan',             'ArticuloController::scan'],
-    ['POST',   '/articulos/foto',             'ArticuloController::subirFoto'],
-    ['GET',    '/articulos/:id/variantes',    'ArticuloController::variantes'],
-    ['GET',    '/articulos/:id',              'ArticuloController::obtener'],
-    ['POST',   '/articulos',                  'ArticuloController::crear'],
-    ['PUT',    '/articulos/:id',              'ArticuloController::actualizar'],
-    ['DELETE', '/articulos/:id',              'ArticuloController::eliminar'],
+    ['GET',    '/articulos',                  'ArticuloController::listar',     'tienda'],
+    ['GET',    '/articulos/buscar',           'ArticuloController::buscar',     'tienda'],
+    ['GET',    '/articulos/scan',             'ArticuloController::scan',       'tienda'],
+    ['POST',   '/articulos/foto',             'ArticuloController::subirFoto',  ['catalogos.crear', 'catalogos.editar']],
+    ['GET',    '/articulos/:id/variantes',    'ArticuloController::variantes',  'tienda'],
+    ['GET',    '/articulos/:id',              'ArticuloController::obtener',    'tienda'],
+    ['POST',   '/articulos',                  'ArticuloController::crear',      'catalogos.crear'],
+    ['PUT',    '/articulos/:id',              'ArticuloController::actualizar', 'catalogos.editar'],
+    ['DELETE', '/articulos/:id',              'ArticuloController::eliminar',   'catalogos.eliminar'],
 
     // Clientes
-    ['GET',    '/clientes',                   'ClienteController::listar'],
-    ['GET',    '/clientes/:id',               'ClienteController::obtener'],
-    ['POST',   '/clientes',                   'ClienteController::crear'],
-    ['PUT',    '/clientes/:id',               'ClienteController::actualizar'],
-    ['PATCH',  '/clientes/:id/autorizar-credito', 'ClienteController::autorizarCredito'],
-    ['DELETE', '/clientes/:id',               'ClienteController::eliminar'],
+    ['GET',    '/clientes',                   'ClienteController::listar',           'tienda'],
+    ['GET',    '/clientes/:id',               'ClienteController::obtener',          'tienda'],
+    ['POST',   '/clientes',                   'ClienteController::crear',            'clientes.crear'],
+    ['PUT',    '/clientes/:id',               'ClienteController::actualizar',       'clientes.editar'],
+    ['PATCH',  '/clientes/:id/autorizar-credito', 'ClienteController::autorizarCredito', 'clientes.autorizar_credito'],
+    ['DELETE', '/clientes/:id',               'ClienteController::eliminar',         'clientes.eliminar'],
 
     // Empleados
-    ['GET',    '/empleados',                  'EmpleadoController::listar'],
-    ['POST',   '/empleados',                  'EmpleadoController::crear'],
-    ['PUT',    '/empleados/:id',              'EmpleadoController::actualizar'],
-    ['DELETE', '/empleados/:id',              'EmpleadoController::eliminar'],
+    ['GET',    '/empleados',                  'EmpleadoController::listar',     'tienda'],
+    ['POST',   '/empleados',                  'EmpleadoController::crear',      'empleados.crear'],
+    ['PUT',    '/empleados/:id',              'EmpleadoController::actualizar', 'empleados.editar'],
+    ['DELETE', '/empleados/:id',              'EmpleadoController::eliminar',   'empleados.eliminar'],
 
     // Proveedores
-    ['GET',    '/proveedores',                'ProveedorController::listar'],
-    ['POST',   '/proveedores',                'ProveedorController::crear'],
-    ['PUT',    '/proveedores/:id',            'ProveedorController::actualizar'],
-    ['DELETE', '/proveedores/:id',            'ProveedorController::eliminar'],
+    ['GET',    '/proveedores',                'ProveedorController::listar',     ['proveedores.ver', 'compras.ver', 'finanzas.ver']],
+    ['POST',   '/proveedores',                'ProveedorController::crear',      'proveedores.crear'],
+    ['PUT',    '/proveedores/:id',            'ProveedorController::actualizar', 'proveedores.editar'],
+    ['DELETE', '/proveedores/:id',            'ProveedorController::eliminar',   'proveedores.eliminar'],
 
     // Almacenes
-    ['GET',    '/almacen/almacenes',          'AlmacenController::listar'],
-    ['POST',   '/almacen/almacenes',          'AlmacenController::crear'],
-    ['PUT',    '/almacen/almacenes/:id',      'AlmacenController::actualizar'],
-    ['DELETE', '/almacen/almacenes/:id',      'AlmacenController::eliminar'],
+    ['GET',    '/almacen/almacenes',          'AlmacenController::listar',     'tienda'],
+    ['POST',   '/almacen/almacenes',          'AlmacenController::crear',      'almacen.crear'],
+    ['PUT',    '/almacen/almacenes/:id',      'AlmacenController::actualizar', 'almacen.editar'],
+    ['DELETE', '/almacen/almacenes/:id',      'AlmacenController::eliminar',   'almacen.eliminar'],
 
     // Inventario
-    ['GET',    '/almacen/inventario',         'InventarioController::existencias'],
-    ['GET',    '/almacen/inventario/kardex',  'InventarioController::kardex'],
-    ['POST',   '/almacen/inventario/ajuste',  'InventarioController::ajuste'],
-    ['POST',   '/almacen/inventario/ajuste-lote', 'InventarioController::ajusteLote'],
+    ['GET',    '/almacen/inventario',             'InventarioController::existencias', $INV_VER],
+    ['GET',    '/almacen/inventario/kardex',      'InventarioController::kardex',      'almacen.ver'],
+    ['POST',   '/almacen/inventario/ajuste',      'InventarioController::ajuste',      'almacen.ajustar'],
+    ['POST',   '/almacen/inventario/ajuste-lote', 'InventarioController::ajusteLote',  'almacen.ajustar'],
 
-    // Traspasos entre almacenes
-    ['GET',    '/almacen/traspasos',          'TraspasoController::listar'],
-    ['POST',   '/almacen/traspasos',          'TraspasoController::crear'],
-    ['GET',    '/almacen/traspasos/:id',      'TraspasoController::obtener'],
-    ['PUT',    '/almacen/traspasos/:id',      'TraspasoController::actualizar'],
-    ['PATCH',  '/almacen/traspasos/:id/aceptar',  'TraspasoController::aceptar'],
-    ['PATCH',  '/almacen/traspasos/:id/rechazar', 'TraspasoController::rechazar'],
+    // Traspasos
+    ['GET',    '/almacen/traspasos',              'TraspasoController::listar',     'traspasos.ver'],
+    ['POST',   '/almacen/traspasos',              'TraspasoController::crear',      'traspasos.crear'],
+    ['GET',    '/almacen/traspasos/:id',          'TraspasoController::obtener',    'traspasos.ver'],
+    ['PUT',    '/almacen/traspasos/:id',          'TraspasoController::actualizar', 'traspasos.editar'],
+    ['PATCH',  '/almacen/traspasos/:id/aceptar',  'TraspasoController::aceptar',    'traspasos.aprobar'],
+    ['PATCH',  '/almacen/traspasos/:id/rechazar', 'TraspasoController::rechazar',   'traspasos.aprobar'],
 
     // Ventas (POS)
-    ['GET',    '/ventas',                     'VentaController::listar'],
-    ['POST',   '/ventas/cotizar',             'VentaController::cotizar'],
-    ['POST',   '/ventas',                     'VentaController::crear'],
-    ['GET',    '/ventas/:id',                 'VentaController::obtener'],
-    ['PATCH',  '/ventas/:id/cancelar',        'VentaController::cancelar'],
+    ['GET',    '/ventas',                     'VentaController::listar',   ['ventas.ver', 'cortes.ver', 'devoluciones.ver']],
+    ['POST',   '/ventas/cotizar',             'VentaController::cotizar',  ['ventas.crear', 'apartados.crear', 'devoluciones.crear']],
+    ['POST',   '/ventas',                     'VentaController::crear',    'ventas.crear'],
+    ['GET',    '/ventas/:id',                 'VentaController::obtener',  ['ventas.ver', 'cortes.ver', 'devoluciones.ver']],
+    ['PATCH',  '/ventas/:id/cancelar',        'VentaController::cancelar', 'ventas.cancelar'],
 
     // Compras
-    ['GET',    '/compras',                    'CompraController::listar'],
-    ['POST',   '/compras',                    'CompraController::crear'],
-    ['GET',    '/compras/:id',                'CompraController::obtener'],
-    ['PUT',    '/compras/:id',                'CompraController::actualizar'],
-    ['PATCH',  '/compras/:id/aprobar',        'CompraController::aprobar'],
-    ['DELETE', '/compras/:id',                'CompraController::eliminar'],
-    ['GET',    '/compras/:id/pagos',          'CompraController::pagos'],
-    ['POST',   '/compras/:id/pagos',          'CompraController::registrarPago'],
+    ['GET',    '/compras',                    'CompraController::listar',        'compras.ver'],
+    ['POST',   '/compras',                    'CompraController::crear',         'compras.crear'],
+    ['GET',    '/compras/:id',                'CompraController::obtener',       'compras.ver'],
+    ['PUT',    '/compras/:id',                'CompraController::actualizar',    'compras.editar'],
+    ['PATCH',  '/compras/:id/aprobar',        'CompraController::aprobar',       'compras.aprobar'],
+    ['DELETE', '/compras/:id',                'CompraController::eliminar',      'compras.eliminar'],
+    ['GET',    '/compras/:id/pagos',          'CompraController::pagos',         ['compras.ver', 'finanzas.ver']],
+    ['POST',   '/compras/:id/pagos',          'CompraController::registrarPago', ['compras.pagar', 'finanzas.crear']],
 
-    // Finanzas: Bancos
-    ['GET',    '/finanzas/bancos',            'FinanzasController::bancosListar'],
-    ['POST',   '/finanzas/bancos',            'FinanzasController::bancosCrear'],
-    // Finanzas: Cuentas por cobrar (clientes)
-    ['GET',    '/finanzas/cuentas-cliente',                  'FinanzasController::cxcListar'],
-    ['POST',   '/finanzas/cuentas-cliente/abono',           'FinanzasController::cxcAbono'],
-    ['GET',    '/finanzas/cuentas-cliente/:id/movimientos',   'FinanzasController::cxcMovimientos'],
-    ['GET',    '/finanzas/cuentas-cliente/:id/estado-cuenta', 'FinanzasController::cxcEstadoCuenta'],
-    // Finanzas: Cuentas por pagar (proveedores)
-    ['GET',    '/finanzas/cuentas-proveedor',                'FinanzasController::cxpListar'],
-    ['POST',   '/finanzas/cuentas-proveedor/pago',           'FinanzasController::cxpPago'],
-    ['GET',    '/finanzas/cuentas-proveedor/:id/movimientos','FinanzasController::cxpMovimientos'],
+    // Finanzas
+    ['GET',    '/finanzas/bancos',                           'FinanzasController::bancosListar',   ['finanzas.ver', 'ventas.crear', 'apartados.crear', 'compras.pagar', 'clientes.ver']],
+    ['POST',   '/finanzas/bancos',                           'FinanzasController::bancosCrear',    'finanzas.editar'],
+    ['GET',    '/finanzas/cuentas-cliente',                  'FinanzasController::cxcListar',      ['finanzas.ver', 'clientes.ver']],
+    ['POST',   '/finanzas/cuentas-cliente/abono',            'FinanzasController::cxcAbono',       'finanzas.crear'],
+    ['GET',    '/finanzas/cuentas-cliente/:id/movimientos',  'FinanzasController::cxcMovimientos', ['finanzas.ver', 'clientes.ver']],
+    ['GET',    '/finanzas/cuentas-cliente/:id/estado-cuenta','FinanzasController::cxcEstadoCuenta',['finanzas.ver', 'clientes.ver']],
+    ['GET',    '/finanzas/cuentas-proveedor',                'FinanzasController::cxpListar',      'finanzas.ver'],
+    ['POST',   '/finanzas/cuentas-proveedor/pago',           'FinanzasController::cxpPago',        'finanzas.crear'],
+    ['GET',    '/finanzas/cuentas-proveedor/:id/movimientos','FinanzasController::cxpMovimientos', 'finanzas.ver'],
+
     // Monedero
-    ['POST',   '/monedero/ajuste',            'MonederoController::ajuste'],
-    ['GET',    '/monedero/:id',               'MonederoController::estadoCuenta'],
+    ['POST',   '/monedero/ajuste',            'MonederoController::ajuste',       'clientes.monedero'],
+    ['GET',    '/monedero/:id',               'MonederoController::estadoCuenta', ['clientes.ver', 'ventas.crear']],
 
     // Apartados
-    ['GET',    '/apartados',                  'ApartadoController::listar'],
-    ['POST',   '/apartados',                  'ApartadoController::crear'],
-    ['GET',    '/apartados/:id',              'ApartadoController::obtener'],
-    ['PUT',    '/apartados/:id',              'ApartadoController::editar'],
-    ['PATCH',  '/apartados/:id/anticipo',     'ApartadoController::anticipo'],
-    ['PATCH',  '/apartados/:id/liquidar',     'ApartadoController::liquidar'],
-    ['PATCH',  '/apartados/:id/cancelar',     'ApartadoController::cancelar'],
+    ['GET',    '/apartados',                  'ApartadoController::listar',   'apartados.ver'],
+    ['POST',   '/apartados',                  'ApartadoController::crear',    'apartados.crear'],
+    ['GET',    '/apartados/:id',              'ApartadoController::obtener',  'apartados.ver'],
+    ['PUT',    '/apartados/:id',              'ApartadoController::editar',   'apartados.editar'],
+    ['PATCH',  '/apartados/:id/anticipo',     'ApartadoController::anticipo', 'apartados.editar'],
+    ['PATCH',  '/apartados/:id/liquidar',     'ApartadoController::liquidar', 'apartados.editar'],
+    ['PATCH',  '/apartados/:id/cancelar',     'ApartadoController::cancelar', 'apartados.cancelar'],
 
-    // Devoluciones y Cambios
-    ['GET',    '/devoluciones/buscar-venta',  'DevolucionController::buscarVenta'],
-    ['GET',    '/devoluciones/cambios',       'DevolucionController::listarCambios'],
-    ['POST',   '/devoluciones/cambios',       'DevolucionController::crearCambio'],
-    ['GET',    '/devoluciones',               'DevolucionController::listar'],
-    ['POST',   '/devoluciones',               'DevolucionController::crear'],
+    // Devoluciones y cambios
+    ['GET',    '/devoluciones/buscar-venta',  'DevolucionController::buscarVenta',   ['devoluciones.crear', 'devoluciones.ver']],
+    ['GET',    '/devoluciones/cambios',       'DevolucionController::listarCambios', 'devoluciones.ver'],
+    ['POST',   '/devoluciones/cambios',       'DevolucionController::crearCambio',   'devoluciones.crear'],
+    ['GET',    '/devoluciones',               'DevolucionController::listar',        'devoluciones.ver'],
+    ['POST',   '/devoluciones',               'DevolucionController::crear',         'devoluciones.crear'],
 
     // Comisiones
-    ['GET',    '/comisiones',                 'ComisionController::listar'],
-    ['GET',    '/comisiones/resumen',         'ComisionController::resumen'],
-    ['PATCH',  '/comisiones/:id/pagar',       'ComisionController::pagar'],
+    ['GET',    '/comisiones',                 'ComisionController::listar',  'comisiones.ver'],
+    ['GET',    '/comisiones/resumen',         'ComisionController::resumen', 'comisiones.ver'],
+    ['PATCH',  '/comisiones/:id/pagar',       'ComisionController::pagar',   'comisiones.pagar'],
 
     // Reportes
-    ['GET',    '/reportes/ventas',            'ReporteController::ventas'],
-    ['GET',    '/reportes/utilidad',          'ReporteController::utilidad'],
-    ['GET',    '/reportes/por-lista',         'ReporteController::porLista'],
-    ['GET',    '/reportes/top-productos',     'ReporteController::topProductos'],
-    ['GET',    '/reportes/cortes-periodo',    'ReporteController::cortesPeriodo'],
-    ['GET',    '/reportes/cxc-antiguedad',    'ReporteController::cxcAntiguedad'],
-    ['GET',    '/reportes/cxp-proveedores',   'ReporteController::cxpProveedores'],
-    ['GET',    '/reportes/comisiones',        'ReporteController::comisiones'],
-    ['GET',    '/reportes/existencias-valorizadas', 'ReporteController::existencias'],
-    ['GET',    '/reportes/kardex',            'ReporteController::kardex'],
-    ['GET',    '/reportes/compras',           'ReporteController::compras'],
-    ['GET',    '/reportes/devoluciones',      'ReporteController::devoluciones'],
-    ['GET',    '/reportes/dashboard-productos', 'ReporteController::dashboardProductos'],
+    ['GET',    '/reportes/ventas',                  'ReporteController::ventas',            'reportes.ver'],
+    ['GET',    '/reportes/utilidad',                'ReporteController::utilidad',          'reportes.ver'],
+    ['GET',    '/reportes/por-lista',               'ReporteController::porLista',          'reportes.ver'],
+    ['GET',    '/reportes/top-productos',           'ReporteController::topProductos',      'reportes.ver'],
+    ['GET',    '/reportes/cortes-periodo',          'ReporteController::cortesPeriodo',     'reportes.ver'],
+    ['GET',    '/reportes/cxc-antiguedad',          'ReporteController::cxcAntiguedad',     'reportes.ver'],
+    ['GET',    '/reportes/cxp-proveedores',         'ReporteController::cxpProveedores',    'reportes.ver'],
+    ['GET',    '/reportes/comisiones',              'ReporteController::comisiones',        'reportes.ver'],
+    ['GET',    '/reportes/existencias-valorizadas', 'ReporteController::existencias',       'reportes.ver'],
+    ['GET',    '/reportes/kardex',                  'ReporteController::kardex',            'reportes.ver'],
+    ['GET',    '/reportes/compras',                 'ReporteController::compras',           'reportes.ver'],
+    ['GET',    '/reportes/devoluciones',            'ReporteController::devoluciones',      'reportes.ver'],
+    ['GET',    '/reportes/dashboard-productos',     'ReporteController::dashboardProductos','reportes.ver'],
 
-    // Bitacora / auditoria
-    ['GET',    '/audit-log',                  'AuditController::listar'],
+    // Bitacora de la tienda
+    ['GET',    '/audit-log',                  'AuditController::listar', 'bitacora.ver'],
 
-    // Config del sistema (PIN listas 4/5)
-    ['GET',    '/config-sistema/pin-lista-alta', 'ConfigController::estadoPin'],
-    ['PUT',    '/config-sistema/pin-lista-alta', 'ConfigController::cambiarPin'],
+    // Configuracion de la tienda (PIN listas 4/5)
+    ['GET',    '/config-sistema/pin-lista-alta', 'ConfigController::estadoPin',  ['configuracion.ver', 'clientes.crear', 'clientes.editar']],
+    ['PUT',    '/config-sistema/pin-lista-alta', 'ConfigController::cambiarPin', 'configuracion.editar'],
 
-    // Cortes
-    ['GET',    '/cortes/preview',             'CorteController::preview'],
-    ['POST',   '/cortes/cerrar',              'CorteController::cerrar'],
-    ['GET',    '/cortes',                     'CorteController::listar'],
-    ['GET',    '/cortes/:id',                 'CorteController::obtener'],
+    // Cortes de caja
+    ['GET',    '/cortes/preview',             'CorteController::preview', ['cortes.ver', 'cortes.crear']],
+    ['POST',   '/cortes/cerrar',              'CorteController::cerrar',  'cortes.crear'],
+    ['GET',    '/cortes',                     'CorteController::listar',  'cortes.ver'],
+    ['GET',    '/cortes/:id',                 'CorteController::obtener', 'cortes.ver'],
+
+    // ===== Plataforma (solo superadmin) =====
+    ['GET',    '/plataforma/dashboard',              'PlataformaController::dashboard',      'plataforma'],
+    ['GET',    '/plataforma/modulos',                'PlataformaController::modulos',        'plataforma'],
+    ['GET',    '/plataforma/tiendas',                'PlataformaController::tiendas',        'plataforma'],
+    ['POST',   '/plataforma/tiendas',                'PlataformaController::crearTienda',    'plataforma'],
+    ['GET',    '/plataforma/tiendas/:id',            'PlataformaController::tienda',         'plataforma'],
+    ['PUT',    '/plataforma/tiendas/:id',            'PlataformaController::editarTienda',   'plataforma'],
+    ['PATCH',  '/plataforma/tiendas/:id/estado',     'PlataformaController::estadoTienda',   'plataforma'],
+    ['GET',    '/plataforma/tiendas/:id/modulos',    'PlataformaController::modulosTienda',  'plataforma'],
+    ['PUT',    '/plataforma/tiendas/:id/modulos',    'PlataformaController::guardarModulos', 'plataforma'],
+    ['POST',   '/plataforma/tiendas/:id/entrar',     'PlataformaController::entrar',         'plataforma'],
+    ['GET',    '/plataforma/tiendas/:id/conciliar',  'PlataformaController::conciliar',      'plataforma'],
+    ['GET',    '/plataforma/tiendas/:id/export',     'PlataformaController::exportar',       'plataforma'],
+    ['GET',    '/plataforma/usuarios',               'PlataformaController::usuarios',       'plataforma'],
+    ['POST',   '/plataforma/usuarios',               'PlataformaController::crearUsuario',   'plataforma'],
+    ['PUT',    '/plataforma/usuarios/:id',           'PlataformaController::editarUsuario',  'plataforma'],
+    ['DELETE', '/plataforma/usuarios/:id',           'PlataformaController::desactivarUsuario', 'plataforma'],
+    ['POST',   '/plataforma/usuarios/:id/reset-password', 'PlataformaController::resetPassword', 'plataforma'],
+    ['GET',    '/plataforma/audit-log',              'PlataformaController::auditLog',       'plataforma'],
 ];
 
 // ---- Matching ----
@@ -259,97 +299,92 @@ function match_route(string $pattern, string $route): ?array
     return $params;
 }
 
-$handler = null; $params = []; $isPublic = false; $methodMismatch = false;
+$handler = null; $params = []; $permiso = null; $methodMismatch = false;
 foreach ($routes as $r) {
     $m = match_route($r[1], $route);
     if ($m === null) continue;
     if ($r[0] !== $method) { $methodMismatch = true; continue; }
-    $handler  = $r[2];
-    $params   = $m;
-    $isPublic = $r[3] ?? false;
+    [, , $handler, $permiso] = $r + [3 => null];
+    $params = $m;
     break;
 }
-
 if ($handler === null) {
-    Http::fail($methodMismatch ? 'Metodo no permitido' : 'Ruta no encontrada: ' . $route,
-               $methodMismatch ? 405 : 404, 'NOT_FOUND');
+    Http::fail($methodMismatch ? 'Metodo no permitido' : 'Ruta no encontrada', $methodMismatch ? 405 : 404, 'NOT_FOUND');
 }
+if ($permiso === null) Http::fail('Ruta no encontrada', 404, 'NOT_FOUND'); // ruta sin permiso declarado = cerrada
 
-// ---- Autenticacion ----
-$user = null;
-if (!$isPublic) {
-    $token = Http::bearerToken();
-    $user = $token ? Jwt::decode($token, $cfg['jwt_secret']) : null;
-    if (!$user) Http::fail('No autorizado', 401, 'UNAUTHORIZED');
-}
+$ctx = ['user' => null, 'cfg' => $cfg, 'route' => $route];
 
-// ---- Autorizacion (permisos por modulo; replica la logica del front; admin pasa todo) ----
-/** Permiso requerido segun el prefijo de la ruta (null = cualquier usuario autenticado) */
-function route_permiso(string $route): ?string
-{
-    $r = ltrim($route, '/');
-    // pares [prefijo, permiso] en orden de mas especifico a mas general
-    $map = [
-        ['auth/usuarios', 'admin'],
-        ['auth',          null],            // login/me/change-password
-        ['catalogos',     'catalogos.ver'],
-        ['atributos',     'catalogos.ver'],
-        ['categorias',    'catalogos.ver'],
-        ['articulos',     'catalogos.ver'],
-        ['proveedores',   'catalogos.ver'],
-        ['empleados',     'catalogos.ver'],
-        ['clientes',      'clientes.ver'],
-        ['monedero',      'clientes.ver'],
-        ['almacen/traspasos', 'traspasos.ver'],
-        ['almacen',       'almacen.ver'],
-        ['compras',       'compras.ver'],
-        ['ventas',        'ventas.ver'],
-        ['apartados',     'apartados.ver'],
-        ['devoluciones',  'devoluciones.ver'],
-        ['cortes',        'cortes.ver'],
-        ['finanzas',      'finanzas.ver'],
-        ['comisiones',    'comisiones.ver'],
-        ['reportes',      'reportes.ver'],
-        ['audit-log',     'admin'],
-        ['config-sistema','admin'],
-    ];
-    foreach ($map as [$prefijo, $permiso]) {
-        if ($r === $prefijo || strpos($r, $prefijo . '/') === 0) return $permiso;
-    }
-    return null; // ruta sin modulo mapeado: basta estar autenticado
-}
-
-/** Evalua un permiso del usuario imitando hasPermiso() del frontend */
-function user_has_permiso(array $user, string $permiso): bool
-{
-    $perms = $user['permisos'] ?? null;
-    if (is_array($perms) && (($perms['admin'] ?? false) === true)) return true; // admin todo
-    if (!is_array($perms)) return false;
-    $val = $perms;
-    foreach (explode('.', $permiso) as $k) {
-        if ($val === null || is_bool($val)) break;
-        $val = (is_array($val) && array_key_exists($k, $val)) ? $val[$k] : null;
-    }
-    if ($val === true) return true;                          // permiso plano
-    if (is_array($val) && !empty($val['ver'])) return true;  // objeto modulo con .ver
-    return false;
-}
-
-if (!$isPublic) {
-    $permisoRuta = route_permiso($route);
-    if ($permisoRuta !== null && !user_has_permiso($user, $permisoRuta)) {
-        Http::fail('No tienes permiso para realizar esta accion', 403, 'FORBIDDEN');
-    }
-}
-
-$ctx = ['user' => $user, 'cfg' => $cfg];
-
-// ---- Despacho ----
 try {
+    if ($permiso !== 'publico') {
+        // ---- Autenticacion: el JWT solo trae ids cifrados; todo se recarga de la BD ----
+        $token  = Http::bearerToken();
+        $claims = $token ? Jwt::decode($token, $cfg['jwt_secret']) : null;
+        $uid    = ($claims && isset($claims['u'])) ? Tenant::decSesion((string) $claims['u']) : null;
+        $u      = $uid ? Db::one('SELECT * FROM users WHERE id = ?', [$uid]) : null;
+        if (!$u || $u['is_active'] !== 'Si' || (int) $u['token_version'] !== (int) ($claims['v'] ?? -1)) {
+            throw new ApiError('Sesion expirada, vuelve a iniciar sesion', 401, 'UNAUTHORIZED');
+        }
+
+        $actAs = null; // id de tienda cuando el superadmin "entra como tienda"
+        if ($u['rol'] === 'superadmin') {
+            if (isset($claims['t'])) {
+                $actAs = Tenant::decSesion((string) $claims['t']);
+                if (!$actAs) throw new ApiError('Sesion expirada, vuelve a iniciar sesion', 401, 'UNAUTHORIZED');
+            }
+            if ($permiso === 'plataforma') {
+                if ($actAs) throw new ApiError('Ruta no encontrada', 404, 'NOT_FOUND');
+                Tenant::activarPlataforma();
+            } elseif ($actAs) {
+                $emp = Db::one('SELECT * FROM empresas WHERE id = ?', [$actAs]);
+                if (!$emp) throw new ApiError('Ruta no encontrada', 404, 'NOT_FOUND');
+                Tenant::activarTienda($emp);
+            } elseif ($permiso === 'sesion') {
+                Tenant::activarPlataforma();
+            } else {
+                throw new ApiError('Ruta no encontrada', 404, 'NOT_FOUND'); // superadmin sin tienda activa
+            }
+        } else {
+            if ($permiso === 'plataforma') throw new ApiError('Ruta no encontrada', 404, 'NOT_FOUND');
+            $emp = Db::one('SELECT * FROM empresas WHERE id = ?', [(int) $u['id_empresa']]);
+            if (!$emp) throw new ApiError('Sesion expirada, vuelve a iniciar sesion', 401, 'UNAUTHORIZED');
+            if ($emp['is_active'] !== 'Si') throw new ApiError('Cuenta suspendida, contacta al administrador', 403, 'SUSPENDED');
+            Tenant::activarTienda($emp);
+        }
+
+        // Usuario de la peticion para los controladores.
+        // Si el superadmin opera como tienda, 'id' = null (no pertenece a la tienda) y 'act_as' = su id.
+        $ctx['user'] = [
+            'id'          => $actAs ? null : (int) $u['id'],
+            'id_empresa'  => Tenant::hayTienda() ? Tenant::id() : null,
+            'rol'         => $actAs ? 'admin_tienda' : $u['rol'],
+            'nombre'      => $u['nombre'],
+            'apellido'    => $u['apellido'],
+            'login'       => $u['login'],
+            'id_tienda'   => $actAs ? null : ($u['id_almacen_default'] !== null ? (int) $u['id_almacen_default'] : null),
+            'act_as'      => $actAs ? (int) $u['id'] : null,
+            'es_superadmin' => $u['rol'] === 'superadmin',
+            'token_version' => (int) $u['token_version'],
+        ];
+        $ctx['permisos'] = Tenant::hayTienda() ? Permisos::efectivos($ctx['user']) : [];
+
+        // ---- Ids opacos de la ruta y del query string -> ids internos ----
+        if (isset($params['id'])) $params['id'] = Tenant::decEntrada($params['id']);
+        $_GET = Tenant::entrada($_GET);
+
+        // ---- Autorizacion ----
+        if (!Permisos::autoriza($permiso, $ctx)) {
+            throw new ApiError('No tienes permiso para realizar esta accion', 403, 'FORBIDDEN');
+        }
+    }
+
+    // ---- Despacho ----
     [$class, $fn] = explode('::', $handler);
     call_user_func([$class, $fn], $params, $ctx);
 } catch (ApiError $e) {
+    Db::rollbackSiAbierta();
     Http::fail($e->getMessage(), $e->status, $e->code);
 } catch (Throwable $e) {
+    Db::rollbackSiAbierta();
     Http::fail($cfg['debug'] ? ($e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine()) : 'Error interno del servidor', 500, 'SERVER_ERROR');
 }

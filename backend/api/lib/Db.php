@@ -55,4 +55,20 @@ class Db
     public static function begin(): void  { self::$pdo->beginTransaction(); }
     public static function commit(): void { self::$pdo->commit(); }
     public static function rollback(): void { if (self::$pdo->inTransaction()) self::$pdo->rollBack(); }
+    public static function rollbackSiAbierta(): void { if (self::$pdo && self::$pdo->inTransaction()) self::$pdo->rollBack(); }
+
+    /**
+     * Siguiente folio de la tienda para (tipo, serie). Debe llamarse DENTRO de una transaccion:
+     * bloquea la fila del consecutivo (SELECT ... FOR UPDATE) para que dos ventas simultaneas
+     * no obtengan el mismo numero. Devuelve p.ej. "A-000123".
+     */
+    public static function folio(int $idEmpresa, string $tipo, string $serie, int $digitos = 6): string
+    {
+        if (!self::$pdo->inTransaction()) throw new LogicException('Db::folio() requiere una transaccion abierta');
+        self::run('INSERT IGNORE INTO folio_series (id_empresa, tipo, serie, ultimo) VALUES (?,?,?,0)', [$idEmpresa, $tipo, $serie]);
+        $n = (int) self::one('SELECT ultimo FROM folio_series WHERE id_empresa = ? AND tipo = ? AND serie = ? FOR UPDATE',
+            [$idEmpresa, $tipo, $serie])['ultimo'] + 1;
+        self::run('UPDATE folio_series SET ultimo = ? WHERE id_empresa = ? AND tipo = ? AND serie = ?', [$n, $idEmpresa, $tipo, $serie]);
+        return $serie . '-' . str_pad((string) $n, $digitos, '0', STR_PAD_LEFT);
+    }
 }

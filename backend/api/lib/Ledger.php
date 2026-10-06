@@ -1,6 +1,6 @@
 <?php
 // ============================================================
-// LEVOTEK — Ledger: libros mayores de finanzas y bitacora.
+// Ledger: libros mayores de finanzas y bitacora.
 // Centraliza inserciones de movimientos y mutacion de saldos
 // para que CxC, monedero y CxP queden siempre consistentes.
 // Las llamadas deben ocurrir dentro de una transaccion del caller.
@@ -20,8 +20,8 @@ class Ledger
             'INSERT INTO cliente_movimientos (id_empresa,id_cliente,fecha,tipo,concepto,monto,efecto,moneda,id_banco,ref_tipo,id_referencia)
              VALUES (?,?,NOW(),?,?,?,?,?,?,?,?)',
             [$emp, $idCliente, $tipo, $concepto, round($monto, 2), $efecto, $moneda, $idBanco, $refTipo, $idRef]);
-        if ($efecto === 'cargo')      Db::run('UPDATE clientes SET saldo_credito=saldo_credito+? WHERE id=?', [round($monto, 2), $idCliente]);
-        elseif ($efecto === 'abono')  Db::run('UPDATE clientes SET saldo_credito=saldo_credito-? WHERE id=?', [round($monto, 2), $idCliente]);
+        if ($efecto === 'cargo')      Db::run('UPDATE clientes SET saldo_credito=saldo_credito+? WHERE id=? AND id_empresa=?', [round($monto, 2), $idCliente, $emp]);
+        elseif ($efecto === 'abono')  Db::run('UPDATE clientes SET saldo_credito=saldo_credito-? WHERE id=? AND id_empresa=?', [round($monto, 2), $idCliente, $emp]);
         return $id;
     }
 
@@ -37,7 +37,7 @@ class Ledger
             'INSERT INTO monedero_movimientos (id_empresa,id_cliente,tipo,importe,origen,ref_tipo,id_referencia)
              VALUES (?,?,?,?,?,?,?)',
             [$emp, $idCliente, $tipo, $importe, $origen, $refTipo, $idRef]);
-        Db::run('UPDATE clientes SET saldo_favor=saldo_favor+? WHERE id=?', [$importe, $idCliente]);
+        Db::run('UPDATE clientes SET saldo_favor=saldo_favor+? WHERE id=? AND id_empresa=?', [$importe, $idCliente, $emp]);
         return $id;
     }
 
@@ -52,24 +52,27 @@ class Ledger
     }
 
     /** Ajusta el saldo de un banco (si aplica). delta con signo. */
-    public static function bancoDelta(?int $idBanco, float $delta): void
+    public static function bancoDelta(int $emp, ?int $idBanco, float $delta): void
     {
         if (!$idBanco) return;
-        Db::run('UPDATE bancos SET saldo_actual=saldo_actual+? WHERE id=?', [round($delta, 2), $idBanco]);
+        Db::run('UPDATE bancos SET saldo_actual=saldo_actual+? WHERE id=? AND id_empresa=?', [round($delta, 2), $idBanco, $emp]);
     }
 
     /** Registra una entrada en la bitacora. Nunca lanza (best-effort). */
     public static function audit(array $ctx, string $accion, ?string $entidad = null, $idEntidad = null, ?string $descripcion = null): void
     {
         try {
+            // id_empresa NULL = accion de plataforma; act_as = superadmin operando como tienda (soporte)
             $u = $ctx['user'] ?? null;
+            $soporte = !empty($u['act_as']);
             Db::insert(
-                'INSERT INTO audit_log (id_empresa,id_usuario,usuario,accion,entidad,id_entidad,descripcion,ip)
-                 VALUES (?,?,?,?,?,?,?,?)',
+                'INSERT INTO audit_log (id_empresa,id_usuario,act_as,usuario,accion,entidad,id_entidad,descripcion,ip)
+                 VALUES (?,?,?,?,?,?,?,?,?)',
                 [
-                    (int) ($u['id_empresa'] ?? 0),
+                    $u['id_empresa'] ?? null,
                     isset($u['id']) ? (int) $u['id'] : null,
-                    $u ? trim(($u['nombre'] ?? '') . ' ' . ($u['apellido'] ?? '')) : null,
+                    $soporte ? (int) $u['act_as'] : null,
+                    $soporte ? 'Soporte' : ($u ? trim(($u['nombre'] ?? '') . ' ' . ($u['apellido'] ?? '')) : null),
                     $accion, $entidad, $idEntidad !== null ? (string) $idEntidad : null, $descripcion,
                     $_SERVER['REMOTE_ADDR'] ?? null,
                 ]);

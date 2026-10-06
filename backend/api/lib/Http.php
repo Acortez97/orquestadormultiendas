@@ -18,6 +18,8 @@ class Http
     /** Respuesta exitosa */
     public static function ok($data = null, ?string $message = null, ?array $meta = null, int $status = 200): void
     {
+        // Ids opacos: codifica todos los ids de la respuesta con la sal de la tienda/plataforma activa
+        if (is_array($data) && class_exists('Tenant', false)) $data = Tenant::salida($data);
         $resp = ['success' => true, 'data' => $data, 'error' => null];
         if ($message !== null) $resp['message'] = $message;
         if ($meta !== null)    $resp['meta'] = $meta;
@@ -55,12 +57,24 @@ class Http
         exit;
     }
 
-    /** Lee y decodifica el body JSON */
+    /** @var array|null body ya decodificado (con ids opacos convertidos a internos) */
+    private static $body = null;
+
+    /** Lee el body JSON. Los ids opacos llegan ya convertidos a ids internos (Tenant::entrada). */
     public static function body(): array
     {
+        if (self::$body !== null) return self::$body;
         $raw = file_get_contents('php://input');
-        if ($raw === '' || $raw === false) return [];
-        $data = json_decode($raw, true);
+        $data = ($raw === '' || $raw === false) ? [] : json_decode($raw, true);
+        $data = is_array($data) ? $data : [];
+        return self::$body = class_exists('Tenant', false) ? Tenant::entrada($data) : $data;
+    }
+
+    /** Body crudo, SIN convertir ids (solo para login y casos sin sesion) */
+    public static function bodyCrudo(): array
+    {
+        $raw = file_get_contents('php://input');
+        $data = ($raw === '' || $raw === false) ? [] : json_decode($raw, true);
         return is_array($data) ? $data : [];
     }
 
