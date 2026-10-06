@@ -92,6 +92,25 @@ export default function AdminTiendas() {
     try { await plataformaApi.estadoTienda(t._id, suspender ? 'No' : 'Si'); cargar(); } catch (e) { err(e); }
   };
 
+  const AVISO_DEFAULT = 'Tu mensualidad está pendiente de pago. Realízalo a la brevedad para evitar la suspensión del servicio.';
+  const avisoPago = async (t) => {
+    if (t.aviso_pago) {
+      const c = await Swal.fire({ title: `¿Quitar el aviso de pago de «${t.nombre}»?`, text: t.aviso_pago, icon: 'question', showCancelButton: true, confirmButtonText: 'Quitar aviso' });
+      if (!c.isConfirmed) return;
+      try { await plataformaApi.avisoPago(t._id, ''); cargar(); } catch (e) { err(e); }
+      return;
+    }
+    const { value, isConfirmed } = await Swal.fire({
+      title: `Aviso de pago para «${t.nombre}»`,
+      text: 'Todos sus usuarios lo verán en un banner rojo en todas las pantallas hasta que lo quites.',
+      input: 'textarea', inputValue: AVISO_DEFAULT, inputAttributes: { maxlength: 500 },
+      showCancelButton: true, confirmButtonText: 'Publicar aviso', confirmButtonColor: '#e11d48',
+      inputValidator: (v) => (!v.trim() ? 'Escribe el mensaje' : undefined),
+    });
+    if (!isConfirmed) return;
+    try { await plataformaApi.avisoPago(t._id, value); cargar(); } catch (e) { err(e); }
+  };
+
   const entrar = async (t) => {
     const c = await Swal.fire({ title: `Entrar a «${t.nombre}» en modo soporte`,
       text: 'Operarás la tienda durante 2 horas. Todo lo que hagas quedará en su bitácora como "Soporte".',
@@ -127,7 +146,12 @@ export default function AdminTiendas() {
   const columns = [
     { key: 'nombre', label: 'Tienda' },
     { key: 'dominio', label: 'Correos de acceso', render: (t) => <span className="text-slate-600">usuario@{t.dominio}</span> },
-    { key: 'is_active', label: 'Estado', render: (t) => (t.is_active === 'Si' ? <span className="badge-success">Activa</span> : <span className="badge-danger">Suspendida</span>) },
+    { key: 'is_active', label: 'Estado', render: (t) => (
+      <div className="flex flex-wrap gap-1">
+        {t.is_active === 'Si' ? <span className="badge-success">Activa</span> : <span className="badge-danger">Suspendida</span>}
+        {t.aviso_pago && <span className="badge-danger" title={t.aviso_pago}>Aviso de pago</span>}
+      </div>
+    ) },
     { key: 'acc', label: '', noExport: true, render: (t) => (
       <div className="flex flex-wrap gap-1">
         <button className="btn-ghost text-sm" onClick={() => abrirEditar(t)}>Editar</button>
@@ -136,6 +160,9 @@ export default function AdminTiendas() {
         <button className="btn-ghost text-sm" onClick={() => entrar(t)} disabled={t.is_active !== 'Si'}>Entrar</button>
         <button className="btn-ghost text-sm" onClick={() => conciliar(t)}>Conciliar</button>
         <button className="btn-ghost text-sm" onClick={() => respaldo(t)}>Respaldo</button>
+        <button className={`btn-ghost text-sm ${t.aviso_pago ? 'text-emerald-600' : 'text-rose-600'}`} onClick={() => avisoPago(t)}>
+          {t.aviso_pago ? 'Quitar aviso de pago' : 'Aviso de pago'}
+        </button>
         <button className={`btn-ghost text-sm ${t.is_active === 'Si' ? 'text-rose-600' : 'text-emerald-600'}`} onClick={() => alternarEstado(t)}>
           {t.is_active === 'Si' ? 'Suspender' : 'Reactivar'}
         </button>

@@ -103,6 +103,9 @@ Cada suite de API necesita una BD recién reiniciada. Para agregar casos de aisl
 (exige 404 de registro, no de ruta) y agrega un control positivo con la tienda dueña.
 
 ## Despliegue
+**Cambios de base:** todo cambio a `schema.sql` lleva su entrada en `lib/Migraciones.php` (idempotente, solo
+agrega) y su renglón en la tabla de DESPLIEGUE-GODADDY.md; `esquema_test` falla si no coinciden. En el servidor
+se aplican con `api/migrar.php`.
 `cd frontend && npm run build` → `php herramientas/empaquetar.php` → subir `deploy-godaddy/public_html/`.
 Guía completa: [DESPLIEGUE-GODADDY.md](DESPLIEGUE-GODADDY.md). Nunca se suben `reset-db.php`, `backend/tests/`,
 `config.local.php` local ni `credenciales.local.txt` (el empaquetador lo verifica).

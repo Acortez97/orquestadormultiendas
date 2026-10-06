@@ -41,6 +41,7 @@ CREATE TABLE empresas (
   pin_lista_alta    VARCHAR(255) DEFAULT NULL,      -- hash del PIN para listas de precio 4/5
   pin_lista_alta_at DATETIME     DEFAULT NULL,
   notas             TEXT         DEFAULT NULL,
+  aviso_pago        VARCHAR(500) DEFAULT NULL,      -- aviso de pago pendiente que pone el superadmin (NULL = sin aviso)
   is_active         ENUM('Si','No') NOT NULL DEFAULT 'Si',
   created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

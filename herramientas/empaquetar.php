@@ -62,7 +62,7 @@ if (!is_dir("$dest/api/uploads")) mkdir("$dest/api/uploads", 0775, true);
 // ---- Verificacion del paquete ----
 $prohibidos = ['api/reset-db.php', 'api/credenciales.local.txt', 'api/lib/config.local.php'];
 foreach ($prohibidos as $p) if (file_exists("$dest/$p")) falla("El paquete contiene $p");
-foreach (['index.html', '.htaccess', 'api/index.php', 'api/install.php', 'api/schema.sql', 'api/.htaccess', 'api/lib/.htaccess',
+foreach (['index.html', '.htaccess', 'api/index.php', 'api/install.php', 'api/migrar.php', 'api/lib/Migraciones.php', 'api/schema.sql', 'api/.htaccess', 'api/lib/.htaccess',
           'api/uploads/.htaccess', 'api/lib/config.php', 'api/lib/config.local.example.php'] as $p) {
     if (!file_exists("$dest/$p")) falla("Falta $p en el paquete");
 }

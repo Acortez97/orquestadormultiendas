@@ -195,6 +195,14 @@ debePasar('Bitacora de plataforma (superadmin, sin tienda)',
 
 Db::rollback();
 
+// schema.sql y lib/Migraciones.php deben describir la misma estructura
+require_once __DIR__ . '/../api/lib/Migraciones.php';
+$pend = Migraciones::pendientes($pdo);
+if ($pend) { $fallos[] = 'schema.sql no incluye: ' . implode(', ', array_column($pend, 0)); echo "  ✗ Migraciones pendientes sobre un esquema recien instalado
+"; }
+else { $ok++; echo "  ✓ Un esquema recien instalado no tiene migraciones pendientes
+"; }
+
 $total = $ok + count($fallos);
 echo "\n== Resultado: $ok / $total correctos ==\n";
 if ($fallos) { echo "FALLOS:\n - " . implode("\n - ", $fallos) . "\n"; exit(1); }

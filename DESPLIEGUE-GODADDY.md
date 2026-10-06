@@ -77,17 +77,25 @@ Abre `https://TU-DOMINIO/api/install.php?go=1`.
 > correos ni registros DNS.
 
 ## Checklist de seguridad
-- [ ] `api/install.php` borrado.
+- [ ] `api/install.php` y `api/migrar.php` borrados.
 - [ ] `config.local.php` con `debug => false` y `jwt_secret` propio.
 - [ ] `https://TU-DOMINIO/api/schema.sql` y `https://TU-DOMINIO/api/lib/config.local.php` responden **403**.
 - [ ] `https://TU-DOMINIO/api/uploads/` no lista archivos.
 - [ ] Contraseña del superadmin cambiada en el primer acceso.
 
 ## Actualizar a una versión nueva
-1. Arma el paquete otra vez (paso 1).
-2. Sube y reemplaza `public_html/` **sin tocar** `api/lib/config.local.php` ni `api/uploads/`.
-3. Si la versión trae cambios de base de datos, vendrán con su script de migración y sus instrucciones
-   (el instalador no se vuelve a ejecutar sobre una base con datos).
+1. **Respalda la base** (cPanel → phpMyAdmin → tu base → Exportar).
+2. Arma el paquete otra vez (paso 1).
+3. Sube y reemplaza `public_html/` **sin tocar** `api/lib/config.local.php` ni `api/uploads/`.
+   No subas `install.php` (no hace falta y solo funciona sobre una base vacía).
+4. Abre `https://TU-DOMINIO/api/migrar.php`: muestra qué cambios de base faltan. Pulsa **Aplicar ahora**
+   (`?go=1`). Solo agrega lo que falta y nunca borra datos; correrlo dos veces no hace daño.
+5. **Borra `public_html/api/migrar.php`.**
+
+Cambios de base por versión (los aplica `migrar.php`; una instalación nueva ya los trae):
+| Fecha | Cambio |
+|---|---|
+| 2026-10-06 | `empresas.aviso_pago`: aviso de pago pendiente que el superadmin pone a una tienda |
 
 ## Problemas comunes
 | Síntoma | Causa probable |
@@ -97,3 +105,4 @@ Abre `https://TU-DOMINIO/api/install.php?go=1`.
 | La app carga pero todo da 404 | `mod_rewrite` desactivado: la app usa `/api/index.php/v1`, verifica que `api/index.php` exista. |
 | Las fotos no se guardan | `api/uploads` sin permisos de escritura (755). |
 | "Cuenta suspendida" | La tienda fue suspendida desde el panel de administración. |
+| Error 500 después de actualizar | Falta correr `api/migrar.php` (la base no tiene las columnas nuevas). |

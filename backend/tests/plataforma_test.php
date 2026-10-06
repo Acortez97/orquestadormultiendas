@@ -84,6 +84,20 @@ check('Sus datos se conservan', (int) Db::one("SELECT COUNT(*) n FROM clientes c
 status('Reactiva la tienda', api('PATCH', "/plataforma/tiendas/{$z['_id']}/estado", ['is_active' => 'Si'], $tSA), 200);
 status('Vuelve a operar', api('GET', '/auth/me', null, $tZ), 200);
 
+seccion('Aviso de pago pendiente');
+check('Sin aviso de inicio', d(api('GET', '/auth/me', null, $tZ))['tienda']['aviso_pago'] === null);
+$r = api('PUT', "/plataforma/tiendas/{$z['_id']}/aviso-pago", ['mensaje' => '  Tu mensualidad esta vencida  '], $tSA);
+status('El superadmin pone el aviso', $r, 200);
+check('La tienda lo ve en su sesion (sin espacios sobrantes)', d(api('GET', '/auth/me', null, $tZ))['tienda']['aviso_pago'] === 'Tu mensualidad esta vencida');
+check('La tienda sigue operando con el aviso', api('GET', '/clientes', null, $tZ)['status'] === 200);
+check('Las demas tiendas no lo ven', d(api('GET', '/auth/me', null, $tA1))['tienda']['aviso_pago'] === null);
+check('El listado de tiendas lo muestra', array_values(array_filter(d(api('GET', '/plataforma/tiendas', null, $tSA)), fn($x) => $x['_id'] === $z['_id']))[0]['aviso_pago'] === 'Tu mensualidad esta vencida');
+status('La tienda no puede quitarse el aviso', api('PUT', "/plataforma/tiendas/{$z['_id']}/aviso-pago", ['mensaje' => ''], $tZ), 404);
+status('Aviso de mas de 500 caracteres -> 400', api('PUT', "/plataforma/tiendas/{$z['_id']}/aviso-pago", ['mensaje' => str_repeat('x', 501)], $tSA), 400);
+status('El superadmin quita el aviso', api('PUT', "/plataforma/tiendas/{$z['_id']}/aviso-pago", ['mensaje' => ''], $tSA), 200);
+check('Ya no aparece en la sesion de la tienda', d(api('GET', '/auth/me', null, $tZ))['tienda']['aviso_pago'] === null);
+check('Queda en la bitacora global', count(d(api('GET', '/plataforma/audit-log?accion=poner_aviso_pago', null, $tSA))) === 1);
+
 seccion('Modo soporte (entrar como tienda)');
 $r = api('POST', "/plataforma/tiendas/{$z['_id']}/entrar", null, $tSA);
 status('Obtiene token de soporte', $r, 200);

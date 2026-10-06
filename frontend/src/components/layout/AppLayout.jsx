@@ -1,29 +1,28 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import { useOffline } from '../../contexts/OfflineContext';
 import OfflineBanner from '../common/OfflineBanner';
 import { useAuth } from '../../contexts/AuthContext';
 
-const SALDO_URL = import.meta.env.VITE_URL_SALDO;
+const REVISAR_AVISO_MS = 5 * 60 * 1000;
 
+/** Aviso de pago pendiente: lo pone/quita el superadmin desde el panel; lo ven todos los usuarios de la tienda */
 function PaymentBanner() {
-  const [show, setShow] = useState(false);
+  const { user, refreshUser } = useAuth();
 
+  // se revisa cada 5 minutos para que aparezca/desaparezca sin volver a iniciar sesion
   useEffect(() => {
-    if (!SALDO_URL) return;
-    axios.get(SALDO_URL)
-      .then(({ data }) => { if (data?.estado === 'Con Adeudo') setShow(true); })
-      .catch(() => {});
-  }, []);
+    const t = setInterval(() => { refreshUser().catch(() => {}); }, REVISAR_AVISO_MS);
+    return () => clearInterval(t);
+  }, [refreshUser]);
 
-  if (!show) return null;
-
+  const aviso = user?.tienda?.aviso_pago;
+  if (!aviso) return null;
   return (
-    <div className="w-full bg-red-600 text-white text-center text-sm font-semibold py-2 px-4 tracking-wide">
-      {/* SU CUENTA PRESENTA UN ADEUDO — LE SOLICITAMOS REALIZAR EL PAGO A LA BREVEDAD */}
+    <div role="alert" className="sticky top-0 z-50 w-full bg-red-600 px-4 py-2 text-center text-sm font-semibold tracking-wide text-white">
+      {aviso}
     </div>
   );
 }

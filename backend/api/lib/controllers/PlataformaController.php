@@ -30,6 +30,7 @@ class PlataformaController
             'max_usuarios'  => $e['max_usuarios'] !== null ? (int) $e['max_usuarios'] : null,
             'max_almacenes' => $e['max_almacenes'] !== null ? (int) $e['max_almacenes'] : null,
             'notas'         => $e['notas'],
+            'aviso_pago'    => $e['aviso_pago'],
             'is_active'     => $e['is_active'],
             'createdAt'     => $e['created_at'],
         ];
@@ -168,6 +169,17 @@ class PlataformaController
         Db::run('UPDATE empresas SET is_active = ? WHERE id = ?', [$activo, $e['id']]);
         Ledger::audit($ctx, $activo === 'Si' ? 'reactivar_tienda' : 'suspender_tienda', 'tienda', $e['id'], 'Tienda ' . $e['slug']);
         Http::ok(self::fmtTienda(self::tiendaFila((int) $e['id']), $ctx), $activo === 'Si' ? 'Tienda reactivada' : 'Tienda suspendida');
+    }
+
+    /** Pone o quita el aviso de pago pendiente (banner rojo para todos los usuarios de la tienda). Mensaje vacio = quitar. */
+    public static function avisoPago(array $p, array $ctx): void
+    {
+        $e = self::tiendaFila((int) $p['id']);
+        $msg = trim((string) (Http::bodyCrudo()['mensaje'] ?? ''));
+        if (preg_match_all('/./us', $msg) > 500) throw new ApiError('El aviso no puede pasar de 500 caracteres', 400, 'VALIDATION');
+        Db::run('UPDATE empresas SET aviso_pago = ? WHERE id = ?', [$msg === '' ? null : $msg, $e['id']]);
+        Ledger::audit($ctx, $msg === '' ? 'quitar_aviso_pago' : 'poner_aviso_pago', 'tienda', $e['id'], 'Tienda ' . $e['slug'] . ($msg === '' ? '' : ': ' . $msg));
+        Http::ok(self::fmtTienda(self::tiendaFila((int) $e['id']), $ctx), $msg === '' ? 'Aviso quitado' : 'Aviso publicado');
     }
 
     public static function modulosTienda(array $p, array $ctx): void

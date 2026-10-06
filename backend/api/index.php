@@ -277,6 +277,7 @@ $routes = [
     ['GET',    '/plataforma/tiendas/:id',            'PlataformaController::tienda',         'plataforma'],
     ['PUT',    '/plataforma/tiendas/:id',            'PlataformaController::editarTienda',   'plataforma'],
     ['PATCH',  '/plataforma/tiendas/:id/estado',     'PlataformaController::estadoTienda',   'plataforma'],
+    ['PUT',    '/plataforma/tiendas/:id/aviso-pago', 'PlataformaController::avisoPago',      'plataforma'],
     ['GET',    '/plataforma/tiendas/:id/modulos',    'PlataformaController::modulosTienda',  'plataforma'],
     ['PUT',    '/plataforma/tiendas/:id/modulos',    'PlataformaController::guardarModulos', 'plataforma'],
     ['POST',   '/plataforma/tiendas/:id/entrar',     'PlataformaController::entrar',         'plataforma'],

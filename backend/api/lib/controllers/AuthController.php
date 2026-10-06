@@ -18,7 +18,8 @@ class AuthController
         $data['es_superadmin'] = $u['rol'] === 'superadmin' && !$soporte;
         $data['soporte'] = $soporte;           // superadmin operando como tienda
         if ($soporte) $data['rol'] = 'admin_tienda';
-        $data['tienda'] = $emp ? ['nombre' => $emp['nombre'], 'slug' => $emp['slug'], 'logo_url' => $emp['logo_url']] : null;
+        $data['tienda'] = $emp ? ['nombre' => $emp['nombre'], 'slug' => $emp['slug'], 'logo_url' => $emp['logo_url'],
+                                   'aviso_pago' => $emp['aviso_pago'] ?? null] : null;
         return $data;
     }
 

@@ -253,6 +253,7 @@ export const plataformaApi = {
   crearTienda: (data) => post('/plataforma/tiendas', data),
   editarTienda: (id, data) => put(`/plataforma/tiendas/${id}`, data),
   estadoTienda: (id, isActive) => patch(`/plataforma/tiendas/${id}/estado`, { is_active: isActive }),
+  avisoPago: (id, mensaje) => put(`/plataforma/tiendas/${id}/aviso-pago`, { mensaje }),
   modulosTienda: (id) => get(`/plataforma/tiendas/${id}/modulos`),
   guardarModulos: (id, modulos) => put(`/plataforma/tiendas/${id}/modulos`, { modulos }),
   entrar: (id) => post(`/plataforma/tiendas/${id}/entrar`),
