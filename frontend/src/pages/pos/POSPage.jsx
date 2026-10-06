@@ -7,11 +7,12 @@ import { VariantesInline } from '../../components/common/MatrizColorTalla';
 import { clientesApi, almacenesApi, ventasApi, empleadosApi, articulosApi } from '../../services/api/endpoints';
 import { useAuth } from '../../contexts/AuthContext';
 import { printTicket } from '../../utils/ticket';
+import DestinoPago, { faltaDestino, destinoPayload } from '../../components/common/DestinoPago';
 
 const money = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n || 0);
 const FORMAS = [
   { v: 'efectivo', l: 'Efectivo' }, { v: 'tdc', l: 'T. Crédito' }, { v: 'tdb', l: 'T. Débito' },
-  { v: 'transferencia', l: 'Transferencia' }, { v: 'monedero', l: 'Saldo a favor' },
+  { v: 'transferencia', l: 'Transferencia' }, { v: 'cheque', l: 'Cheque' }, { v: 'monedero', l: 'Saldo a favor' },
 ];
 
 export default function POSPage() {
@@ -148,13 +149,16 @@ export default function POSPage() {
     if (!cliente) return Swal.fire('Falta cliente', 'Selecciona o registra un cliente', 'warning');
     if (!idVendedor) return Swal.fire('Falta vendedor', 'Selecciona un vendedor para registrar la venta', 'warning');
     if (cart.length === 0) return;
+    const sinDestino = pagos.map(faltaDestino).find(Boolean);
+    if (sinDestino) { Swal.fire('Falta el destino del pago', sinDestino, 'warning'); return; }
     setBusy(true);
     try {
       const body = {
         id_almacen: idAlmacen,
         id_cliente: cliente._id,
         lineas: cart.map((c) => ({ id_articulo: c.art._id, id_color: c.id_color, id_talla: c.id_talla, cantidad: c.cantidad })),
-        pagos: pagos.filter((p) => Number(p.importe) > 0).map((p) => ({ forma: p.forma, importe: Number(p.importe) })),
+        // cada pago lleva a donde va el dinero: terminal (tarjeta) o cuenta (transferencia / cheque)
+        pagos: pagos.filter((p) => Number(p.importe) > 0).map((p) => ({ forma: p.forma, importe: Number(p.importe), ...destinoPayload(p) })),
         a_credito: aCredito,
         destino_cambio: destinoCambioFinal,
         id_vendedor: idVendedor,
@@ -253,12 +257,15 @@ export default function POSPage() {
           <div className="card p-4 space-y-2">
             <p className="text-xs text-slate-400 uppercase font-semibold">Pagos</p>
             {pagos.map((p, i) => (
-              <div key={i} className="flex gap-2">
-                <select className="input-base !py-1 text-sm flex-1" value={p.forma} onChange={(e) => setPagos((ps) => ps.map((x, idx) => idx === i ? { ...x, forma: e.target.value } : x))}>
-                  {FORMAS.map((f) => <option key={f.v} value={f.v}>{f.l}</option>)}
-                </select>
-                <input type="number" className="input-base !py-1 text-sm w-28" value={p.importe} onChange={(e) => setPagos((ps) => ps.map((x, idx) => idx === i ? { ...x, importe: e.target.value } : x))} />
-                {pagos.length > 1 && <button className="btn-ghost text-rose-600 p-1" onClick={() => setPagos((ps) => ps.filter((_, idx) => idx !== i))}><TrashIcon className="w-4 h-4" /></button>}
+              <div key={i} className="space-y-1">
+                <div className="flex gap-2">
+                  <select className="input-base !py-1 text-sm flex-1" value={p.forma} onChange={(e) => setPagos((ps) => ps.map((x, idx) => idx === i ? { ...x, forma: e.target.value, id_terminal: '', id_banco: '' } : x))}>
+                    {FORMAS.map((f) => <option key={f.v} value={f.v}>{f.l}</option>)}
+                  </select>
+                  <input type="number" className="input-base !py-1 text-sm w-28" value={p.importe} onChange={(e) => setPagos((ps) => ps.map((x, idx) => idx === i ? { ...x, importe: e.target.value } : x))} />
+                  {pagos.length > 1 && <button className="btn-ghost text-rose-600 p-1" onClick={() => setPagos((ps) => ps.filter((_, idx) => idx !== i))}><TrashIcon className="w-4 h-4" /></button>}
+                </div>
+                <DestinoPago forma={p.forma} value={p} className="w-full" onChange={(d) => setPagos((ps) => ps.map((x, idx) => idx === i ? { ...x, ...d } : x))} />
               </div>
             ))}
             <button className="btn-ghost text-xs" onClick={() => setPagos((ps) => [...ps, { forma: 'efectivo', importe: 0 }])}>+ Agregar pago</button>

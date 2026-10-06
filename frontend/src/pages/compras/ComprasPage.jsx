@@ -7,15 +7,16 @@ import ArticuloAutocomplete from '../../components/common/ArticuloAutocomplete';
 import MatrizColorTalla, { expandirMatriz, sumarMatriz } from '../../components/common/MatrizColorTalla';
 import { comprasApi, proveedoresApi, almacenesApi, articulosApi } from '../../services/api/endpoints';
 import { useAuth } from '../../contexts/AuthContext';
+import DestinoPago, { faltaDestino, destinoPayload } from '../../components/common/DestinoPago';
 
 const money = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n || 0);
 const fecha = (d) => (d ? new Date(d).toLocaleDateString('es-MX') : '');
 
+// Pago a proveedor: efectivo sale de la caja del almacen de la compra; transferencia / cheque, de una cuenta
 const FORMAS_PAGO = [
-  { value: 'efectivo', label: 'Efectivo' },
+  { value: 'efectivo', label: 'Efectivo (caja de la tienda)' },
   { value: 'transferencia', label: 'Transferencia' },
-  { value: 'tdc', label: 'Tarjeta de crédito' },
-  { value: 'tdb', label: 'Tarjeta de débito' },
+  { value: 'cheque', label: 'Cheque' },
 ];
 
 const estadoBadge = (estado) =>
@@ -293,11 +294,14 @@ export default function ComprasPage() {
       Swal.fire('Importe inválido', 'Captura un importe mayor a cero.', 'warning');
       return;
     }
+    const falta = faltaDestino({ forma: pagoForm.forma_pago, importe: pagoForm.importe, id_banco: pagoForm.id_banco });
+    if (falta) { Swal.fire('Falta la cuenta', 'Selecciona de qué cuenta sale el pago.', 'warning'); return; }
     setSavingPago(true);
     try {
       await comprasApi.registrarPago(pagosCompra._id, {
         importe: Number(pagoForm.importe),
         forma_pago: pagoForm.forma_pago,
+        ...destinoPayload({ forma: pagoForm.forma_pago, id_banco: pagoForm.id_banco }),
         aplica_iva: pagoForm.aplica_iva,
         referencia: pagoForm.referencia,
       });
@@ -655,7 +659,7 @@ export default function ComprasPage() {
                   <select
                     className="input-base"
                     value={pagoForm.forma_pago}
-                    onChange={(e) => setPagoForm({ ...pagoForm, forma_pago: e.target.value })}
+                    onChange={(e) => setPagoForm({ ...pagoForm, forma_pago: e.target.value, id_banco: '' })}
                   >
                     {FORMAS_PAGO.map((f) => (
                       <option key={f.value} value={f.value}>
@@ -663,6 +667,8 @@ export default function ComprasPage() {
                       </option>
                     ))}
                   </select>
+                  <DestinoPago forma={pagoForm.forma_pago} value={pagoForm} className="mt-2 w-full"
+                    onChange={(d) => setPagoForm({ ...pagoForm, id_banco: d.id_banco })} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">Referencia</label>

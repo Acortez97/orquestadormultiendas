@@ -23,6 +23,7 @@ const esc = (s) =>
     .replace(/>/g, '&gt;');
 
 const FORMA_LABEL = {
+  cheque: 'Cheque',
   efectivo: 'Efectivo',
   tdc: 'T. Crédito',
   tdb: 'T. Débito',
@@ -60,7 +61,17 @@ function renderCorteHTML(preview, opts = {}) {
     card('Cambio devuelto (efvo.)', money(r.cambio_efectivo)),
     card('Devoluciones del día', money(r.total_devoluciones)),
     card('Efectivo por cambios', money(r.efectivo_cambios)),
+    card('Abonos de clientes', money(r.total_abonos)),
+    card('Salidas de efectivo', money(r.caja_salidas)),
+    card('Cobrado en cuentas / terminales', money(r.cobrado_en_cuentas)),
   ].join('');
+
+  const destinos = (preview?.por_destino || [])
+    .map((d) => `<tr><td>${esc(d.cuenta)}</td><td>${esc(d.terminal || '—')}</td><td>${esc(FORMA_LABEL[d.forma] || d.forma)}</td><td class="right">${money(d.monto)}</td></tr>`)
+    .join('');
+  const caja = (preview?.caja_movimientos || [])
+    .map((m) => `<tr><td>${esc(m.hora)}</td><td>${esc(m.concepto)}</td><td class="right">${m.tipo === 'ingreso' ? money(m.monto) : ''}</td><td class="right">${m.tipo === 'egreso' ? money(m.monto) : ''}</td></tr>`)
+    .join('');
 
   const formas = Object.entries(r.por_forma_pago || {})
     .map(([k, v]) => `<tr><td>${esc(FORMA_LABEL[k] || k)}</td><td class="right">${money(v)}</td></tr>`)
@@ -181,6 +192,8 @@ function renderCorteHTML(preview, opts = {}) {
         )
       : ''
   }
+  ${seccion('Dónde quedó el dinero (tarjeta, transferencia, cheque)', `<table class="tbl"><thead><tr><th>Cuenta</th><th>Terminal</th><th>Forma</th><th class="right">Monto</th></tr></thead><tbody>${destinos || '<tr><td colspan="4" class="muted center">Sin cobros fuera de efectivo</td></tr>'}</tbody></table>`)}
+  ${seccion('Movimientos de la caja (efectivo)', `<table class="tbl"><thead><tr><th>Hora</th><th>Concepto</th><th class="right">Entrada</th><th class="right">Salida</th></tr></thead><tbody>${caja || '<tr><td colspan="4" class="muted center">Sin movimientos</td></tr>'}</tbody></table>`)}
   ${seccion('Detalle de notas', detalle || '<div class="muted center">Sin notas</div>')}
   ${seccion('Devoluciones del día', `<table class="tbl"><thead><tr><th>Folio</th><th>Venta origen</th><th class="right">Total</th><th>Destino</th></tr></thead><tbody>${devoluciones || '<tr><td colspan="4" class="muted center">Sin devoluciones</td></tr>'}</tbody></table>`)}
   ${seccion('Cambios del día', `<table class="tbl"><thead><tr><th>Folio</th><th>Venta origen</th><th class="right">Devuelto</th><th class="right">Nuevo</th><th class="right">Diferencia</th><th class="right">Pago efvo.</th></tr></thead><tbody>${cambios || '<tr><td colspan="6" class="muted center">Sin cambios</td></tr>'}</tbody></table>`)}

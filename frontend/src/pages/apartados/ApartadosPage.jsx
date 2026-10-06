@@ -7,6 +7,7 @@ import ArticuloAutocomplete from '../../components/common/ArticuloAutocomplete';
 import { VariantesInline } from '../../components/common/MatrizColorTalla';
 import { useAuth } from '../../contexts/AuthContext';
 import { printTicket } from '../../utils/ticket';
+import DestinoPago, { faltaDestino, destinoPayload } from '../../components/common/DestinoPago';
 import {
   apartadosApi,
   clientesApi,
@@ -25,6 +26,7 @@ const FORMAS = [
   { v: 'tdc', l: 'T. Crédito' },
   { v: 'tdb', l: 'T. Débito' },
   { v: 'transferencia', l: 'Transferencia' },
+  { v: 'cheque', l: 'Cheque' },
 ];
 
 const ESTADO_BADGE = {
@@ -283,7 +285,9 @@ export default function ApartadosPage() {
     if (!importe || importe <= 0) return Swal.fire('Importe inválido', '', 'warning');
     setProcesando(true);
     try {
-      const res = await apartadosApi.anticipo(anticipoRow._id, { importe, forma: anticipoData.forma });
+      const falta = faltaDestino(anticipoData);
+      if (falta) { setProcesando(false); return Swal.fire('Falta el destino del pago', falta, 'warning'); }
+      const res = await apartadosApi.anticipo(anticipoRow._id, { importe, forma: anticipoData.forma, ...destinoPayload(anticipoData) });
       if (res.success === false) throw new Error(res.message);
       setAnticipoRow(null);
       cargar();
@@ -314,7 +318,9 @@ export default function ApartadosPage() {
       return Swal.fire('Pago insuficiente', `Falta cubrir ${money(liquidarRestante - liquidarPagado)}`, 'warning');
     setProcesando(true);
     try {
-      const pagos = liquidarPagos.filter((p) => Number(p.importe) > 0).map((p) => ({ forma: p.forma, importe: Number(p.importe) }));
+      const falta = liquidarPagos.map(faltaDestino).find(Boolean);
+      if (falta) { setProcesando(false); return Swal.fire('Falta el destino del pago', falta, 'warning'); }
+      const pagos = liquidarPagos.filter((p) => Number(p.importe) > 0).map((p) => ({ forma: p.forma, importe: Number(p.importe), ...destinoPayload(p) }));
       const res = await apartadosApi.liquidar(liquidarRow._id, { pagos, destino_cambio: liquidarDestinoFinal });
       if (res.success === false) throw new Error(res.message);
       setLiquidarRow(null);
@@ -731,12 +737,13 @@ export default function ApartadosPage() {
                 <select
                   className="input-base"
                   value={anticipoData.forma}
-                  onChange={(e) => setAnticipoData({ ...anticipoData, forma: e.target.value })}
+                  onChange={(e) => setAnticipoData({ ...anticipoData, forma: e.target.value, id_terminal: '', id_banco: '' })}
                 >
                   {FORMAS.map((f) => (
                     <option key={f.v} value={f.v}>{f.l}</option>
                   ))}
                 </select>
+                <DestinoPago forma={anticipoData.forma} value={anticipoData} className="mt-2 w-full" onChange={(d) => setAnticipoData({ ...anticipoData, ...d })} />
               </div>
             </div>
           </div>
@@ -768,11 +775,11 @@ export default function ApartadosPage() {
             <div className="space-y-2">
               <label className="block text-xs font-medium text-slate-500">Pago del saldo</label>
               {liquidarPagos.map((p, i) => (
-                <div key={i} className="flex gap-2">
+                <div key={i} className="space-y-1"><div className="flex gap-2">
                   <select
                     className="input-base !py-1 text-sm flex-1"
                     value={p.forma}
-                    onChange={(e) => setLiquidarPagos((ps) => ps.map((x, idx) => (idx === i ? { ...x, forma: e.target.value } : x)))}
+                    onChange={(e) => setLiquidarPagos((ps) => ps.map((x, idx) => (idx === i ? { ...x, forma: e.target.value, id_terminal: '', id_banco: '' } : x)))}
                   >
                     {FORMAS.map((f) => <option key={f.v} value={f.v}>{f.l}</option>)}
                   </select>
@@ -787,6 +794,8 @@ export default function ApartadosPage() {
                       <TrashIcon className="w-4 h-4" />
                     </button>
                   )}
+                </div>
+                <DestinoPago forma={p.forma} value={p} className="w-full" onChange={(d) => setLiquidarPagos((ps) => ps.map((x, idx) => (idx === i ? { ...x, ...d } : x)))} />
                 </div>
               ))}
               <button className="btn-ghost text-xs" onClick={() => setLiquidarPagos((ps) => [...ps, { forma: 'efectivo', importe: 0 }])}>

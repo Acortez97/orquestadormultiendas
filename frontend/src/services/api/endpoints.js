@@ -181,6 +181,24 @@ export const cuentasProveedorApi = {
 export const bancosApi = {
   listar: (params) => get('/finanzas/bancos', params),
   crear: (data) => post('/finanzas/bancos', data),
+  actualizar: (id, data) => put(`/finanzas/bancos/${id}`, data),
+  movimientos: (id, params) => get(`/finanzas/bancos/${id}/movimientos`, params),
+  // tipo: deposito (caja -> cuenta) | retiro (cuenta -> caja) | ingreso | egreso
+  movimiento: (id, data) => post(`/finanzas/bancos/${id}/movimientos`, data),
+};
+
+// Terminales de cobro con tarjeta (cada una deposita en una cuenta)
+export const terminalesApi = {
+  listar: (params) => get('/finanzas/terminales', params),
+  crear: (data) => post('/finanzas/terminales', data),
+  actualizar: (id, data) => put(`/finanzas/terminales/${id}`, data),
+};
+
+// Efectivo por almacen (caja)
+export const cajasApi = {
+  listar: () => get('/finanzas/cajas'),
+  movimientos: (idAlmacen, params) => get(`/finanzas/cajas/${idAlmacen}/movimientos`, params),
+  movimiento: (idAlmacen, data) => post(`/finanzas/cajas/${idAlmacen}/movimientos`, data),
 };
 
 // ---- Reportes ----

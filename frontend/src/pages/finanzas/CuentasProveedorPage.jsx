@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Swal from 'sweetalert2';
 import DataTable from '../../components/common/DataTable';
 import Modal from '../../components/common/Modal';
-import { cuentasProveedorApi, bancosApi } from '../../services/api/endpoints';
+import { cuentasProveedorApi, bancosApi, almacenesApi } from '../../services/api/endpoints';
 
 const money = (n, c = 'MXN') =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: c }).format(Number(n || 0));
@@ -12,11 +12,14 @@ export default function CuentasProveedorPage() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [bancos, setBancos] = useState([]);
+  const [almacenes, setAlmacenes] = useState([]);
+  // el pago sale de la caja de un almacen (efectivo) o de una cuenta (transferencia / cheque)
+  const pagoVacio = { monto: '', moneda: 'MXN', concepto: 'Pago a proveedor', forma: 'transferencia', id_banco: '', id_almacen: '' };
 
   const [prov, setProv] = useState(null);
   const [movs, setMovs] = useState([]);
   const [movLoading, setMovLoading] = useState(false);
-  const [pago, setPago] = useState({ monto: '', moneda: 'MXN', concepto: 'Pago a proveedor', id_banco: '' });
+  const [pago, setPago] = useState(pagoVacio);
   const [saving, setSaving] = useState(false);
 
   const cargar = useCallback(async () => {
@@ -32,11 +35,14 @@ export default function CuentasProveedorPage() {
   }, []);
 
   useEffect(() => { cargar(); }, [cargar]);
-  useEffect(() => { bancosApi.listar().then((r) => setBancos(r.data?.docs ?? r.data ?? [])).catch(() => {}); }, []);
+  useEffect(() => {
+    bancosApi.listar().then((r) => setBancos(r.data?.docs ?? r.data ?? [])).catch(() => {});
+    almacenesApi.listar().then((r) => setAlmacenes(r.data || [])).catch(() => {});
+  }, []);
 
   async function abrirEstado(row) {
     setProv(row);
-    setPago({ monto: '', moneda: 'MXN', concepto: 'Pago a proveedor', id_banco: '' });
+    setPago(pagoVacio);
     setMovLoading(true);
     setMovs([]);
     try {
@@ -52,6 +58,8 @@ export default function CuentasProveedorPage() {
   async function registrarPago(e) {
     e.preventDefault();
     if (!(Number(pago.monto) > 0)) return Swal.fire('Importe inválido', 'Captura un pago mayor a cero.', 'warning');
+    if (pago.forma === 'efectivo' && !pago.id_almacen) return Swal.fire('Falta la caja', 'Indica de qué tienda sale el efectivo.', 'warning');
+    if (pago.forma !== 'efectivo' && !pago.id_banco) return Swal.fire('Falta la cuenta', 'Indica de qué cuenta sale el pago.', 'warning');
     setSaving(true);
     try {
       await cuentasProveedorApi.pago({
@@ -59,11 +67,12 @@ export default function CuentasProveedorPage() {
         monto: Number(pago.monto),
         moneda: pago.moneda,
         concepto: pago.concepto || 'Pago a proveedor',
-        id_banco: pago.id_banco || undefined,
+        forma: pago.forma,
+        ...(pago.forma === 'efectivo' ? { id_almacen: pago.id_almacen } : { id_banco: pago.id_banco }),
       });
       const res = await cuentasProveedorApi.movimientos(prov._id);
       setMovs(res.data || []);
-      setPago({ monto: '', moneda: 'MXN', concepto: 'Pago a proveedor', id_banco: '' });
+      setPago(pagoVacio);
       cargar();
       Swal.fire({ icon: 'success', title: 'Pago registrado', timer: 1400, showConfirmButton: false });
     } catch (err) {
@@ -132,11 +141,31 @@ export default function CuentasProveedorPage() {
                   <input className="input-base" value={pago.concepto} onChange={(e) => setPago({ ...pago, concepto: e.target.value })} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Banco (opcional)</label>
-                  <select className="input-base" value={pago.id_banco} onChange={(e) => setPago({ ...pago, id_banco: e.target.value })}>
-                    <option value="">Sin banco</option>
-                    {bancos.map((b) => <option key={b._id} value={b._id}>{b.nombre}</option>)}
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Forma de pago</label>
+                  <select className="input-base" value={pago.forma} onChange={(e) => setPago({ ...pago, forma: e.target.value })}>
+                    <option value="transferencia">Transferencia</option>
+                    <option value="cheque">Cheque</option>
+                    <option value="efectivo">Efectivo (caja de una tienda)</option>
                   </select>
+                </div>
+                <div>
+                  {pago.forma === 'efectivo' ? (
+                    <>
+                      <label className="block text-xs font-medium text-slate-500 mb-1">Sale de la caja de</label>
+                      <select className="input-base" value={pago.id_almacen} onChange={(e) => setPago({ ...pago, id_almacen: e.target.value })}>
+                        <option value="">—</option>
+                        {almacenes.map((a) => <option key={a._id} value={a._id}>{a.nombre}</option>)}
+                      </select>
+                    </>
+                  ) : (
+                    <>
+                      <label className="block text-xs font-medium text-slate-500 mb-1">Sale de la cuenta</label>
+                      <select className="input-base" value={pago.id_banco} onChange={(e) => setPago({ ...pago, id_banco: e.target.value })}>
+                        <option value="">—</option>
+                        {bancos.map((b) => <option key={b._id} value={b._id}>{b.nombre}</option>)}
+                      </select>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="flex justify-end">

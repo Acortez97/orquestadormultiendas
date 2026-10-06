@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import Swal from 'sweetalert2';
 import Modal from './Modal';
-import { cuentasClienteApi, bancosApi } from '../../services/api/endpoints';
+import { cuentasClienteApi, almacenesApi } from '../../services/api/endpoints';
+import { useAuth } from '../../contexts/AuthContext';
+import DestinoPago, { FORMAS_COBRO, faltaDestino, destinoPayload } from './DestinoPago';
 
 const money = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n || 0));
 const fecha = (d) => (d ? new Date(d).toLocaleDateString('es-MX') : '');
@@ -33,11 +35,14 @@ export default function EstadoCuentaCliente({ cliente, onClose, onChanged, puede
   const [movs, setMovs] = useState([]);
   const [saldos, setSaldos] = useState({ saldo_credito: 0, saldo_favor: 0 });
   const [loading, setLoading] = useState(false);
-  const [bancos, setBancos] = useState([]);
-  const [abono, setAbono] = useState({ monto: '', concepto: 'Abono a cuenta', id_banco: '' });
+  const { user } = useAuth();
+  const [almacenes, setAlmacenes] = useState([]);
+  // el abono entra a la caja de la tienda (efectivo) o a la cuenta / terminal
+  const abonoVacio = { monto: '', concepto: 'Abono a cuenta', forma: 'efectivo', id_banco: '', id_terminal: '', id_almacen: user?.id_tienda || '' };
+  const [abono, setAbono] = useState(abonoVacio);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { bancosApi.listar().then((r) => setBancos(r.data?.docs ?? r.data ?? [])).catch(() => {}); }, []);
+  useEffect(() => { almacenesApi.listar().then((r) => setAlmacenes(r.data || [])).catch(() => {}); }, []);
 
   const cargarMovs = useCallback(async (id) => {
     setLoading(true);
@@ -58,7 +63,7 @@ export default function EstadoCuentaCliente({ cliente, onClose, onChanged, puede
 
   useEffect(() => {
     if (cliente?._id) {
-      setAbono({ monto: '', concepto: 'Abono a cuenta', id_banco: '' });
+      setAbono(abonoVacio);
       cargarMovs(cliente._id);
     }
   }, [cliente, cargarMovs]);
@@ -69,16 +74,21 @@ export default function EstadoCuentaCliente({ cliente, onClose, onChanged, puede
   async function registrarAbono(e) {
     e.preventDefault();
     if (!(Number(abono.monto) > 0)) return Swal.fire('Importe inválido', 'Captura un abono mayor a cero.', 'warning');
+    const falta = faltaDestino({ ...abono, importe: abono.monto });
+    if (falta) return Swal.fire('Falta el destino del pago', falta, 'warning');
+    if (!abono.id_almacen) return Swal.fire('Falta la tienda', 'Indica en qué tienda se recibió el abono.', 'warning');
     setSaving(true);
     try {
       await cuentasClienteApi.abono({
         id_cliente: cliente._id,
         monto: Number(abono.monto),
         concepto: abono.concepto || 'Abono a cuenta',
-        id_banco: abono.id_banco || undefined,
+        forma: abono.forma,
+        id_almacen: abono.id_almacen,
+        ...destinoPayload(abono),
       });
       await cargarMovs(cliente._id);
-      setAbono({ monto: '', concepto: 'Abono a cuenta', id_banco: '' });
+      setAbono(abonoVacio);
       onChanged?.();
       Swal.fire({ icon: 'success', title: 'Abono registrado', timer: 1400, showConfirmButton: false });
     } catch (err) {
@@ -119,12 +129,20 @@ export default function EstadoCuentaCliente({ cliente, onClose, onChanged, puede
                     onChange={(e) => setAbono({ ...abono, concepto: e.target.value })} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Banco (opcional)</label>
-                  <select className="input-base" value={abono.id_banco}
-                    onChange={(e) => setAbono({ ...abono, id_banco: e.target.value })}>
-                    <option value="">Sin banco</option>
-                    {bancos.map((b) => <option key={b._id} value={b._id}>{b.nombre}</option>)}
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Tienda que recibe</label>
+                  <select className="input-base" value={abono.id_almacen} onChange={(e) => setAbono({ ...abono, id_almacen: e.target.value })}>
+                    <option value="">—</option>
+                    {almacenes.map((a) => <option key={a._id} value={a._id}>{a.nombre}</option>)}
                   </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Forma de pago</label>
+                  <select className="input-base" value={abono.forma} onChange={(e) => setAbono({ ...abono, forma: e.target.value, id_banco: '', id_terminal: '' })}>
+                    {FORMAS_COBRO.map((f) => <option key={f.v} value={f.v}>{f.l}</option>)}
+                  </select>
+                </div>
+                <div className="md:col-span-2 self-end">
+                  <DestinoPago forma={abono.forma} value={abono} className="w-full" onChange={(d) => setAbono({ ...abono, ...d })} />
                 </div>
               </div>
               <div className="flex justify-end">

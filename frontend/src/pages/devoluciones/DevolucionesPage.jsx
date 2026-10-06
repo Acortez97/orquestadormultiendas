@@ -7,6 +7,7 @@ import { VariantesInline } from '../../components/common/MatrizColorTalla';
 import { devolucionesApi, ventasApi, clientesApi } from '../../services/api/endpoints';
 import { useAuth } from '../../contexts/AuthContext';
 import { printTicket } from '../../utils/ticket';
+import DestinoPago, { FORMAS_COBRO, faltaDestino, destinoPayload } from '../../components/common/DestinoPago';
 
 // Nombre del usuario logueado para el campo "Vendedor" del ticket.
 const nombreUsuario = (u) => [u?.nombre, u?.apellido].filter(Boolean).join(' ') || u?.email || '';
@@ -286,6 +287,7 @@ function TabCambios() {
   const [sel, setSel] = useState({});          // líneas devueltas del ticket: index -> cantidad
   const [nuevas, setNuevas] = useState([]);     // líneas nuevas (autocomplete)
   const [pagoDiferencia, setPagoDiferencia] = useState(0);
+  const [pagoDif, setPagoDif] = useState({ forma: 'efectivo', id_terminal: '', id_banco: '' });   // como paga la diferencia
   const [saving, setSaving] = useState(false);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -341,14 +343,17 @@ function TabCambios() {
     }));
     if (lineas_devueltas.length === 0 || lineas_nuevas.length === 0)
       return Swal.fire('Faltan líneas', 'Indica prendas devueltas (del ticket) y prendas nuevas', 'warning');
+    const falta = diferencia > 0 ? faltaDestino({ ...pagoDif, importe: pagoDiferencia }) : null;
+    if (falta) return Swal.fire('Falta el destino del pago', falta, 'warning');
     setSaving(true);
     try {
       const res = await devolucionesApi.crearCambio({
         folio_venta: venta?.folio, lineas_devueltas, lineas_nuevas,
         diferencia, pago_diferencia: diferencia > 0 ? Number(pagoDiferencia) : 0,
+        ...(diferencia > 0 ? { forma_diferencia: pagoDif.forma, ...destinoPayload(pagoDif) } : {}),
       });
       await imprimirTicket(res.data);
-      setVenta(null); setSel({}); setNuevas([]); setPagoDiferencia(0); cargar();
+      setVenta(null); setSel({}); setNuevas([]); setPagoDiferencia(0); setPagoDif({ forma: 'efectivo', id_terminal: '', id_banco: '' }); cargar();
       Swal.fire({ icon: 'success', title: 'Cambio registrado', timer: 1600, showConfirmButton: false });
     } catch (e) { Swal.fire('Error', e.message, 'error'); }
     finally { setSaving(false); }
@@ -462,9 +467,18 @@ function TabCambios() {
             {diferencia > 0 ? <span className="badge-warning ml-1">Cliente paga</span> : diferencia < 0 ? <span className="badge-primary ml-1">Saldo a favor</span> : null}
           </div>
           {diferencia > 0 && (
-            <div className="w-48">
-              <label className="block text-xs font-medium text-slate-600 mb-1">Pago de diferencia</label>
-              <input type="number" min="0" step="0.01" className="input-base" value={pagoDiferencia} onChange={(e) => setPagoDiferencia(e.target.value)} />
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="w-40">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Pago de diferencia</label>
+                <input type="number" min="0" step="0.01" className="input-base" value={pagoDiferencia} onChange={(e) => setPagoDiferencia(e.target.value)} />
+              </div>
+              <div className="w-40">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Forma</label>
+                <select className="input-base" value={pagoDif.forma} onChange={(e) => setPagoDif({ forma: e.target.value, id_terminal: '', id_banco: '' })}>
+                  {FORMAS_COBRO.map((f) => <option key={f.v} value={f.v}>{f.l}</option>)}
+                </select>
+              </div>
+              <DestinoPago forma={pagoDif.forma} value={pagoDif} className="w-56" onChange={(d) => setPagoDif({ ...pagoDif, ...d })} />
             </div>
           )}
           <button onClick={submit} disabled={saving} className="btn-primary mt-1">{saving ? 'Registrando…' : 'Registrar cambio'}</button>

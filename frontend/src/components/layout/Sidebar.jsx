@@ -32,7 +32,7 @@ const NAV = [
   { label: 'Traspasos',       path: '/traspasos',     icon: ArrowsRightLeftIcon,       permiso: 'traspasos.ver' },
   { label: 'Compras',         path: '/compras',       icon: ShoppingCartIcon,          permiso: 'compras.ver' },
   { label: 'Finanzas',        tipo: 'section' },
-  { label: 'Bancos',          path: '/finanzas/bancos',            icon: BuildingLibraryIcon, permiso: 'finanzas.ver' },
+  { label: 'Bancos y cajas',  path: '/finanzas/bancos',            icon: BuildingLibraryIcon, permiso: 'finanzas.ver' },
   { label: 'Cuentas x Cobrar',path: '/finanzas/cuentas-cliente',   icon: CurrencyDollarIcon,  permiso: 'finanzas.ver' },
   { label: 'Cuentas x Pagar', path: '/finanzas/cuentas-proveedor', icon: CreditCardIcon,      permiso: 'finanzas.ver' },
   { label: 'Comisiones',      path: '/comisiones',    icon: ReceiptPercentIcon,        permiso: 'comisiones.ver' },
