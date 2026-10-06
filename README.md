@@ -1,119 +1,80 @@
-# LEVOTEK — Sistema de gestión y ventas
+# Orquestador MultiTiendas
 
-Tienda / punto de venta con inventario por **color y talla**, clientes, ventas (POS) y cortes de caja.
+Plataforma **multi-tienda** de punto de venta, inventario y finanzas. Un solo proyecto, un solo dominio,
+un solo hosting y **una sola base de datos**, con dos paneles:
 
-- **Frontend:** React 19 + Vite + Tailwind (carpeta `frontend/`)
-- **Backend:** PHP 7.4+ / 8.x + MySQL (carpeta `backend/`) — pensado para **GoDaddy** (hosting compartido)
+- **Administración general** (`/admin`, superadmin): crea tiendas, habilita módulos, administra usuarios y lo ve todo.
+- **Panel de tienda** (`/`): cada tienda opera con **sus propios** usuarios, almacenes, artículos, inventario,
+  ventas, cortes, clientes, CxC, proveedores, CxP y bancos. **Ninguna tienda ve ni puede deducir que existen otras.**
 
-> Es una versión **núcleo**: login/usuarios, catálogos, artículos, almacenes, inventario color‑talla, clientes, ventas/POS y cortes de caja. El frontend incluye más páginas (compras, traspasos, finanzas, facturación, etc.) que aún **no** tienen backend; quedan listas para una segunda fase.
+Acceso con correo + contraseña, donde el dominio identifica la tienda:
+
+| Quién | Correo de acceso |
+|---|---|
+| Superadmin | `admin@levotek.com` |
+| Admin de una tienda | `admin@<tienda>.levotek.com` |
+| Usuarios de esa tienda | `cajero1@<tienda>.levotek.com` (los crea el admin de la tienda) |
+
+> Son identificadores para iniciar sesión, **no buzones de correo**: no hay que crear correos ni DNS.
+
+- **Frontend:** React 19 + Vite + Tailwind (`frontend/`)
+- **Backend:** PHP 8 sin Composer + MySQL 8.0.16+ / MariaDB 10.4+ (`backend/api/`), pensado para GoDaddy compartido.
+
+📄 **Diseño completo:** [PLAN-ORQUESTADOR.md](PLAN-ORQUESTADOR.md) · 🤖 **Contexto para Claude Code:** [CLAUDE.md](CLAUDE.md)
 
 ---
+
+## Estado
+
+| Fase | Contenido | Estado |
+|---|---|---|
+| F0 | Preparación: repo, BD propia, secretos fuera del repo | ✅ |
+| F1 | Esquema v2 aislado por tienda + instalador + pruebas de BD | ✅ |
+| F2 | Núcleo de seguridad: `Tenant`, login por dominio, permisos por acción, ids opacos | ⏳ |
+| F3 | Adaptar los 21 controladores al esquema v2 + pruebas de aislamiento por API | ⏳ |
+| F4–F7 | API de plataforma, panel `/admin`, panel de tienda, despliegue | ⏳ |
+
+> ⚠️ **Mientras F2 y F3 no estén hechas, la API no funciona contra el esquema v2** (los controladores
+> todavía usan las columnas de MultiTienda). La base, el instalador y sus pruebas sí funcionan.
+
+---
+
+## Desarrollo local (Windows + XAMPP)
+
+Requisitos: PHP 8 con `pdo_mysql`, XAMPP (MariaDB), Node 20+.
+
+1. **Configuración**
+   ```bash
+   cp backend/api/lib/config.local.example.php backend/api/lib/config.local.php   # y pon un jwt_secret
+   cp frontend/.env.example frontend/.env
+   ```
+2. **Servicios:** doble clic en `iniciar.bat` (MariaDB en **3307**, backend en **8082**, frontend en **3001**).
+   `detener.bat` los apaga. No se toca el MySQL del sistema en 3306.
+3. **Base de datos** (la primera vez, o para empezar de cero):
+   ```bash
+   php backend/api/reset-db.php --go --demo
+   ```
+   Crea el esquema, el superadmin y dos tiendas demo (`demo1`, `demo2`) con admin y cajero.
+   Las contraseñas se generan al azar y quedan en `backend/api/credenciales.local.txt` (ignorado por git).
+4. **Pruebas**
+   ```bash
+   php backend/tests/esquema_test.php    # aislamiento entre tiendas a nivel BD (53 casos)
+   php backend/tests/loginid_test.php    # correos de acceso
+   ```
+
+## Producción (GoDaddy)
+Ver [DESPLIEGUE-GODADDY.md](DESPLIEGUE-GODADDY.md) (se actualiza en F7). Nunca subir `reset-db.php`,
+`backend/tests/` ni `config.local.php` del entorno local.
 
 ## Estructura
-
 ```
-sistematienda/
-├─ frontend/            App React (se compila y se sube el resultado)
-│  ├─ src/  public/  package.json ...
-│  └─ dist/             ← lo que se sube a GoDaddy (se genera con "npm run build")
-└─ backend/
-   ├─ api/              ← se sube a public_html/api/
-   │  ├─ index.php  install.php  schema.sql  .htaccess
-   │  └─ lib/  (config.php, Db.php, Jwt.php, controladores...)
-   └─ database/schema.sql   (copia del esquema, por si lo importas a mano)
+backend/api/          API PHP (se sube a public_html/api/)
+  index.php           router + autenticación + permisos
+  install.php         instalador (solo sobre BD vacía)
+  reset-db.php        reinstalación SOLO desarrollo (bloqueado fuera de localhost/debug)
+  schema.sql          esquema v2
+  lib/                Db, Jwt, Http, Ledger, Pricing, LoginId, Seeder, controllers/
+backend/tests/        pruebas (no se suben al servidor)
+frontend/             app React
+docs/historial/       documentación de MultiTienda/LEVOTEK (origen de este proyecto)
 ```
-
-En GoDaddy el resultado final queda así dentro de `public_html/`:
-
-```
-public_html/
-├─ index.html, assets/, logo.svg ...   (contenido de frontend/dist)
-├─ .htaccess                            (de frontend/dist; enruta el SPA)
-└─ api/                                 (contenido de backend/api)
-   ├─ index.php, .htaccess, lib/ ...
-```
-
-Así el frontend queda en `https://tudominio.com/` y el API en `https://tudominio.com/api/v1/...`.
-
----
-
-## Despliegue en GoDaddy (paso a paso)
-
-### 1. Base de datos
-1. cPanel → **Bases de datos MySQL**.
-2. Crea una base (ej. `levotek`), un usuario y asígnalo a la base con **todos los privilegios**.
-3. Anota: **host** (casi siempre `localhost`), **nombre de BD**, **usuario** y **contraseña**.
-
-### 2. Configurar el backend
-Edita `backend/api/lib/config.php` con tus datos:
-```php
-'db' => [
-  'host' => 'localhost',
-  'name' => 'TU_BD',
-  'user' => 'TU_USUARIO',
-  'pass' => 'TU_PASSWORD',
-],
-'jwt_secret' => 'pon-aqui-una-cadena-larga-y-aleatoria',
-```
-> En producción (mismo dominio) deja `cors_origin => '*'` o, mejor, el dominio exacto.
-
-### 3. Subir archivos
-1. Sube **todo el contenido de `backend/api/`** a `public_html/api/` (vía Administrador de archivos o FTP).
-2. Compila el frontend (ver abajo) y sube **todo el contenido de `frontend/dist/`** a `public_html/`.
-
-### 4. Instalar (crear tablas + admin)
-Abre en el navegador:
-```
-https://tudominio.com/api/install.php?go=1
-```
-Crea las tablas y un usuario inicial:
-- **Usuario:** `admin@levotek.mx`
-- **Contraseña:** `admin123`
-
-➡️ **Después: BORRA `api/install.php`**, entra y **cambia la contraseña**.
-
-### 5. Listo
-Entra a `https://tudominio.com/`, inicia sesión y empieza a cargar tus catálogos, artículos e inventario.
-
----
-
-## Compilar el frontend
-
-Necesitas Node 20+ instalado en tu PC.
-
-```bash
-cd frontend
-npm install
-npm run build      # genera frontend/dist
-```
-
-`frontend/.env.production` ya apunta el API a `/api/v1` (mismo dominio), así que no hay que tocar nada para GoDaddy.
-
-### Desarrollo local
-```bash
-# Backend (requiere PHP con pdo_mysql y un MySQL local):
-cd backend/api
-DB_HOST=127.0.0.1 DB_PORT=3306 DB_NAME=levotek DB_USER=root DB_PASS= APP_DEBUG=true \
-  php -S 127.0.0.1:8080
-#   instalar: http://127.0.0.1:8080/install.php?go=1
-#   las rutas quedan en  http://127.0.0.1:8080/index.php/v1/...
-
-# Frontend (en otra terminal):
-cd frontend
-# crea .env con: VITE_API_URL=http://127.0.0.1:8080/index.php/v1
-npm run dev        # abre http://localhost:3001
-```
-
----
-
-## Notas técnicas
-- El backend replica el **mismo contrato JSON** que esperaba la app original: envoltura `{ success, data, error, message, meta }`, **JWT Bearer**, IDs expuestos como `_id`.
-- Contraseñas con `password_hash` (bcrypt). El JWT es HS256 sin dependencias externas (compatible con hosting compartido, sin Composer).
-- **Socket.io / tiempo real** está desactivado (no aplica en hosting compartido). Se reactiva poniendo `VITE_SOCKET_URL` si algún día hay un servidor de sockets.
-- Marca: **LEVOTEK** (logo en `frontend/public/logo.svg`). Paleta índigo + ámbar.
-
-## Credenciales por defecto
-| | |
-|---|---|
-| Usuario | `admin@levotek.mx` |
-| Contraseña | `admin123` (cámbiala al entrar) |

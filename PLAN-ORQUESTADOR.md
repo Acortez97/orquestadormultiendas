@@ -64,7 +64,7 @@ del orden de **100–200 MB/año** con índices.
 |---|---|---|
 | GoDaddy **compartido** | **20–40 tiendas** pequeñas/medianas (≈ 60–120 usuarios conectados a la vez) | El cuello de botella son las peticiones PHP simultáneas, no la BD. |
 | **VPS** básico (2–4 vCPU, 4–8 GB) | **100–300 tiendas** | Mismo código, solo cambia el servidor. |
-| Volumen de BD | Decenas de millones de filas sin problema | Siempre que los índices empiecen por `id_empresa` (sección 5.3). |
+| Volumen de BD | Decenas de millones de filas sin problema | Siempre que los índices empiecen por `id_empresa` (sección 5.6). |
 
 > Son cifras de orden de magnitud. Antes de pasar de ~15 tiendas en compartido, medir tiempos de respuesta
 > y uso de CPU en cPanel, y planear el salto a VPS.
@@ -113,8 +113,8 @@ foto o pantalla debe aparecer algo que delate otra tienda (ver 4.3 y 4.8).
 
 ### 4.2 Permisos en tres niveles
 1. **Módulos de la tienda** (`empresa_modulos`): qué tiene habilitado la tienda. **Solo el superadmin** los cambia.
-2. **Permisos del usuario** (`users.permisos`, ya existe): qué puede usar ese usuario. Los asigna el superadmin
-   o el `admin_tienda` de esa tienda.
+2. **Permisos del usuario** (tabla `user_permisos`, por módulo **y acción**: ver/crear/editar/eliminar/aprobar):
+   qué puede hacer ese usuario. Los asigna el superadmin o el `admin_tienda` de esa tienda.
 3. **Rol**: `admin_tienda` tiene implícitos todos los módulos de su tienda.
 
 **Permiso efectivo = permisos del usuario ∩ módulos de la tienda.** Se calcula en el servidor
@@ -168,6 +168,7 @@ ni el panel de administración**. Reglas, todas validadas en el servidor:
 |---|---|
 | Alcance | Solo ve y modifica usuarios con **su mismo `id_empresa`** (se toma del token, nunca del body). |
 | Qué puede crear | Solo usuarios con rol `usuario`. **No** puede crear `admin_tienda` ni `superadmin`; eso lo hace solo el superadmin. |
+| Correo de acceso | Solo captura la parte antes de la @; el dominio `@<su-tienda>.levotek.com` lo pone el servidor y no se puede cambiar. |
 | Qué permisos puede dar | Solo módulos **habilitados en su tienda**. Si manda un módulo no habilitado → 400. |
 | Qué no puede tocar | Su propio rol/permisos, a otros `admin_tienda`, los módulos de la tienda, ni nada bajo `/plataforma/*`. |
 | Límite | Respeta `empresas.max_usuarios` si el superadmin lo definió. |
@@ -227,13 +228,12 @@ CREATE TABLE clientes (
 CREATE TABLE ventas (
   id          INT AUTO_INCREMENT PRIMARY KEY,
   id_empresa  INT NOT NULL,
-  serie       VARCHAR(10) NOT NULL,
-  folio       INT NOT NULL,
+  folio       VARCHAR(40) NOT NULL,    -- serie + consecutivo, tomado de folio_series
   id_almacen  INT NOT NULL,
   id_cliente  INT NULL,
   ...
   UNIQUE KEY uq_venta_emp_id (id_empresa, id),
-  UNIQUE KEY uq_venta_folio  (id_empresa, serie, folio),
+  UNIQUE KEY uq_venta_folio  (id_empresa, folio),
   KEY idx_venta_fecha        (id_empresa, fecha),
   CONSTRAINT fk_venta_alm FOREIGN KEY (id_empresa, id_almacen) REFERENCES almacenes(id_empresa, id),
   CONSTRAINT fk_venta_cli FOREIGN KEY (id_empresa, id_cliente) REFERENCES clientes(id_empresa, id)
@@ -306,7 +306,7 @@ CREATE TABLE user_permisos (         -- reemplaza el JSON users.permisos
   id_empresa INT NOT NULL,
   id_user    INT NOT NULL,
   modulo     VARCHAR(40) NOT NULL,
-  accion     ENUM('ver','crear','editar','eliminar','aprobar') NOT NULL,
+  accion     VARCHAR(20) NOT NULL,        -- FK a modulo_acciones (acciones validas de cada modulo)
   PRIMARY KEY (id_user, modulo, accion),
   FOREIGN KEY (id_empresa, id_user) REFERENCES users(id_empresa, id),
   FOREIGN KEY (id_empresa, modulo)  REFERENCES empresa_modulos(id_empresa, modulo)
@@ -373,7 +373,7 @@ Prefijo `/api/v1/plataforma/*`, solo `rol = superadmin` (nuevo `PlataformaContro
 
 | Endpoint | Qué hace |
 |---|---|
-| `GET/POST /plataforma/tiendas`, `GET/PUT /plataforma/tiendas/:id` | Alta/edición de tiendas. Al crear, **siembra** la tienda: almacén principal, cliente "Público General", atributos y categorías base, banco caja. |
+| `GET/POST /plataforma/tiendas`, `GET/PUT /plataforma/tiendas/:id` | Alta/edición de tiendas. Al crear (en **una sola transacción**): valida el `slug`, crea la tienda, sus módulos, su primer `admin_tienda` (`admin@<slug>.levotek.com` con contraseña temporal) y **siembra** almacén principal, cliente "Público General", atributos/categorías base y banco "Caja". El `slug` no se puede editar después. |
 | `PATCH /plataforma/tiendas/:id/estado` | Suspender / reactivar. |
 | `GET/PUT /plataforma/tiendas/:id/modulos` | Módulos habilitados de la tienda. |
 | `GET/POST /plataforma/usuarios`, `PUT/DELETE /plataforma/usuarios/:id`, `POST …/:id/reset-password` | Usuarios de cualquier tienda, con sus permisos (validados contra los módulos de la tienda). |
@@ -381,6 +381,7 @@ Prefijo `/api/v1/plataforma/*`, solo `rol = superadmin` (nuevo `PlataformaContro
 | `GET /plataforma/dashboard` | Ventas del día/mes por tienda, tiendas activas, usuarios conectados. |
 | `GET /plataforma/audit-log` | Bitácora global, filtrable por tienda. |
 | `GET /plataforma/tiendas/:id/export` | Respaldo de una tienda (JSON/SQL de sus filas). |
+| `GET /plataforma/tiendas/:id/conciliar` | Recalcula saldos (CxC, monedero, CxP, bancos) desde los movimientos y reporta diferencias (sección 5.5). |
 
 Las rutas actuales `/auth/usuarios*` se **conservan para la tienda**, restringidas a `admin_tienda`
 y con las reglas de la sección 4.7 (`AuthController` reutiliza las mismas validaciones que
@@ -398,12 +399,15 @@ Mismo build, mismo dominio; se separa por **ruta y layout**:
 /admin/*              → Panel de administración general (solo superadmin)
     /admin              Dashboard global
     /admin/tiendas      Lista + alta/edición + módulos + suspender
-    /admin/usuarios     Usuarios de todas las tiendas, permisos por módulo
+    /admin/usuarios     Usuarios de todas las tiendas, permisos por módulo y acción
     /admin/bitacora     Bitácora global
 /*                    → Panel de tienda (lo que ya existe hoy)
 ```
 
-- Tras el login: superadmin → `/admin`; usuario de tienda → `/`.
+- `LoginPage`: un campo **Correo** y uno **Contraseña** (como hoy), con ejemplo `usuario@tutienda.levotek.com`.
+- Tras el login: superadmin → `/admin`; usuario de tienda → `/`. Un superadmin no puede abrir `/`
+  salvo con "entrar como tienda"; un usuario de tienda que abra `/admin` va a "No encontrado".
+- Primer acceso con contraseña temporal → obliga a cambiarla.
 - `AdminLayout` propio (otro color de barra para que sea evidente en qué panel estás).
 - El panel de admin se carga con `import()` dinámico: los usuarios de tienda no descargan ese código
   (y ayuda con el bundle de 1.4 MB que ya teníamos).
@@ -415,12 +419,49 @@ Mismo build, mismo dominio; se separa por **ruta y layout**:
 
 ---
 
-## 8. Fases de trabajo
+## 8. Flujos de punta a punta
+
+### 8.1 Alta de una tienda (superadmin)
+1. Entra con `admin@levotek.com` → `/admin/tiendas` → **Nueva tienda**.
+2. Captura nombre, RFC, IVA, **subdominio** (`zapateriacentro`; el sistema avisa si ya existe o si no es válido:
+   solo minúsculas, números y guiones) y marca los **módulos** que tendrá.
+3. El servidor, en una transacción, crea la tienda, sus módulos, el usuario `admin@zapateriacentro.levotek.com`
+   con contraseña temporal y la semilla (almacén principal, Público General, catálogos base, caja).
+4. El superadmin entrega al dueño el correo y la contraseña temporal.
+
+### 8.2 La tienda da de alta a su personal (admin de tienda)
+1. El dueño entra con `admin@zapateriacentro.levotek.com`; el sistema le pide cambiar la contraseña.
+2. Va a **Usuarios → Nuevo**, escribe `cajero1` (ve el dominio fijo `@zapateriacentro.levotek.com`),
+   nombre, almacén por defecto y marca permisos (solo aparecen los módulos de su tienda).
+3. El cajero entra con `cajero1@zapateriacentro.levotek.com` y solo ve los menús que le dieron.
+
+### 8.3 Inicio de sesión (servidor)
+1. Recibe `cajero1@zapateriacentro.levotek.com` + contraseña. Revisa bloqueo por intentos.
+2. Separa: usuario `cajero1`, subdominio `zapateriacentro`, dominio `levotek.com` (si el dominio no es
+   `login_domain` → error genérico).
+3. Busca la tienda por `slug` → busca `cajero1` **dentro de esa tienda** → verifica contraseña, que el usuario
+   y la tienda estén activos.
+4. Emite JWT con `id_user`, `id_empresa`, `rol`, `token_version`. Cualquier fallo: "Correo o contraseña incorrectos".
+
+### 8.4 Una operación cualquiera (ej. venta en POS)
+1. El front manda ids opacos (`_id`) de almacén, cliente, artículos y variantes.
+2. `index.php` valida JWT, `token_version`, tienda activa y permiso efectivo `ventas.crear`.
+3. `VentaController` decodifica cada id con la sal de **su** tienda (`Tenant`); si alguno no es de la tienda → 404.
+4. Inserta venta, líneas, pagos, movimientos de inventario, CxC/monedero y comisión con `id_empresa` de la tienda;
+   las FKs compuestas garantizan que todo pertenece a la misma tienda. El folio es el siguiente **de esa tienda**.
+
+### 8.5 Suspensión de una tienda
+El superadmin la marca inactiva → en la siguiente petición sus usuarios reciben "Cuenta suspendida, contacte
+al administrador" y no pueden entrar. Sus datos se conservan intactos; al reactivarla todo sigue igual.
+
+---
+
+## 9. Fases de trabajo
 
 | Fase | Contenido | Esfuerzo aprox. |
 |---|---|---|
-| **F0** | Copia del proyecto ✅. Nueva BD `orquestadormultiendas` en XAMPP, repo git nuevo, rebrand de textos. | 0.5 día |
-| **F1** | **Esquema v2** completo (sección 5): `id_empresa` en todas las tablas, FKs compuestas, variantes con `NULL`+FK, folios por tienda, `modulos`/`empresa_modulos`/`user_permisos`, índices. Instalador y semilla (superadmin + 2 tiendas demo). | 2–3 días |
+| **F0** ✅ | Copia del proyecto, BD `orquestadormultiendas` en XAMPP (3307), repo git, secretos fuera de `config.php`, scripts `iniciar.bat`/`detener.bat`, `reset-db.php` bloqueado fuera de localhost. *Pendiente:* rebrand de textos visibles (falta definir el nombre comercial). | 0.5 día |
+| **F1** ✅ | **Esquema v2** completo (sección 5): `id_empresa` en todas las tablas, FKs compuestas, variantes con `NULL`+FK, folios por tienda, `modulos`/`empresa_modulos`/`user_permisos`, índices. Instalador y semilla (superadmin + 2 tiendas demo). | 2–3 días |
 | **F2** | `lib/Tenant.php`, helpers `Db::*T`, ids opacos por tienda, login con correo `usuario@<tienda>.levotek.com`, bloqueo por intentos, tienda suspendida, permiso efectivo por acción, `token_version`. | 2 días |
 | **F3** | Adaptar los 21 controladores al esquema v2 (columnas renombradas, `id_empresa` en hijas, `Tenant::owns` en cada id de entrada, 404 en vez de 403) + **pruebas de aislamiento A/B** (API y BD directa) + conciliación de saldos. | 4–5 días |
 | **F4** | `PlataformaController` (tiendas, módulos, usuarios, siembra, entrar-como, dashboard, export). | 2 días |
@@ -429,12 +470,72 @@ Mismo build, mismo dominio; se separa por **ruta y layout**:
 | **F6b** | Gestión de usuarios por la tienda (`admin_tienda`): reglas de la sección 4.7 en `AuthController`, página Usuarios adaptada, y casos extra en las pruebas de aislamiento (admin de A intentando crear/editar usuarios de B, dar módulos no habilitados, escalar a `admin_tienda`). | 1.5 días |
 | **F7** | Despliegue en GoDaddy + checklist (borrar `install.php`/`reset-db.php`, secretos fuera del repo, cambiar contraseña superadmin). | 0.5 día |
 
+### Decisiones tomadas al implementar F1 (difieren del borrador)
+- **Acciones de permiso:** en lugar de un `ENUM` fijo, tabla `modulo_acciones` (cada módulo define sus acciones:
+  p. ej. `ventas.cancelar`, `compras.aprobar`, `clientes.autorizar_credito`) y `user_permisos` la referencia por FK.
+- **Folios:** `folio VARCHAR` con `UNIQUE (id_empresa, folio)` + tabla `folio_series` (consecutivo por tienda/tipo/serie
+  tomado con `SELECT … FOR UPDATE`), en vez de columnas `serie` + `folio INT`. Elimina el `COUNT(*)+1` que tenía carreras.
+- **Variantes del artículo:** `articulo_colores`/`articulo_tallas` → una sola tabla `articulo_eje_valores (eje 1/2)`.
+- `folio_venta` copiado en devoluciones/cambios/comisiones se eliminó (dato derivado; se obtiene por JOIN).
+- `empresa_modulos.activo`: deshabilitar un módulo no borra los permisos; solo dejan de aplicar.
+- Verificado en MariaDB 10.4 (XAMPP): 49 tablas, 128 FKs, CHECKs activos. `backend/tests/esquema_test.php`: 53/53.
+
 **Total estimado: 16–20 días de trabajo.** F1–F3 no se deben recortar: son las que garantizan que una
 tienda nunca vea, use ni deduzca datos de otra.
 
 ---
 
-## 9. Pendientes heredados a resolver aquí
+### Entregables y criterio de terminado por fase
+
+**F0 — Preparación**
+- Repo git propio, BD `orquestadormultiendas` en XAMPP, `login_domain = levotek.com` en `config.php`.
+- Rebrand de textos de MultiTienda/LEVOTEK al nombre final; secretos fuera del repo (`config.php` lee de
+  variables de entorno o de `config.local.php` ignorado).
+- ✔ Terminado cuando: el proyecto arranca en local apuntando a la BD nueva.
+
+**F1 — Esquema v2**
+- `backend/api/schema.sql` reescrito (47 → ~45 tablas: se eliminan `colores`, `tallas`, `colecciones`; se agregan
+  `modulos`, `empresa_modulos`, `user_permisos`, `login_intentos`).
+- `install.php` nuevo: crea esquema, catálogo de módulos, superadmin `admin@levotek.com` y 2 tiendas demo
+  (`demo1`, `demo2`) con su admin, cajero y datos de ejemplo.
+- ✔ Terminado cuando: el instalador corre limpio y un `INSERT` manual que cruce tiendas es rechazado por MySQL.
+
+**F2 — Núcleo de seguridad**
+- Nuevos: `lib/Tenant.php` (tienda del token, `owns`, ids opacos), `lib/LoginId.php` (armar/separar
+  `usuario@slug.levotek.com`), helpers `Db::oneT/allT/runT`.
+- `index.php`: validación de `token_version`, tienda activa, permiso efectivo por acción, rutas `/plataforma/*`
+  solo superadmin. `AuthController::login` con el nuevo formato y bloqueo por intentos.
+- ✔ Terminado cuando: login funciona para los 3 roles y las pruebas de login (correo de otra tienda, dominio
+  ajeno, 6 intentos fallidos, tienda suspendida) pasan.
+
+**F3 — Controladores + pruebas de aislamiento**
+- Los 21 controladores adaptados: columnas `id_valor1/2`, `id_empresa` en tablas hijas, `Tenant::owns` en todo
+  id de entrada, ids opacos en respuestas, folios por tienda.
+- `backend/tests/aislamiento.php`: batería A/B de la sección 4.5 + conciliación de saldos.
+- ✔ Terminado cuando: 0 fallos en la batería y las pruebas funcionales que ya existían (ventas, compras,
+  traspasos, apartados, devoluciones, cortes, reportes) siguen pasando por tienda.
+
+**F4 — API de plataforma**
+- `PlataformaController` con todos los endpoints de la sección 6 (alta de tienda transaccional con su admin).
+- ✔ Terminado cuando: se crea una tienda desde la API y su admin puede entrar de inmediato.
+
+**F5 — Panel de administración (frontend)**
+- `AdminLayout` + páginas `/admin` (Dashboard, Tiendas, Usuarios, Bitácora), carga diferida con `import()`.
+- ✔ Terminado cuando: el flujo 8.1 se puede hacer completo desde la pantalla.
+
+**F6 / F6b — Panel de tienda**
+- Menú por permisos efectivos, nombre/logo de la tienda, fotos en carpeta aleatoria por tienda, limpieza de
+  sesión al salir, página Usuarios para `admin_tienda` con dominio fijo y editor de permisos por acción.
+- ✔ Terminado cuando: el flujo 8.2 funciona y las pruebas de abuso del admin de tienda pasan.
+
+**F7 — Despliegue**
+- Build, subida a GoDaddy, instalador, borrar `install.php`/`reset-db.php`, verificar versión de MySQL
+  (para los `CHECK`), cambiar contraseña del superadmin, correr la batería de aislamiento contra producción
+  con las tiendas demo y luego eliminarlas.
+
+---
+
+## 10. Pendientes heredados a resolver aquí
 - Sacar credenciales del repo (`config.php` con valores por defecto, `config.local.php`).
 - `reset-db.php` sin autenticación: no desplegar, o exigir token de superadmin.
 - Unificar las dos copias de `schema.sql`.

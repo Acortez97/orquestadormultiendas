@@ -1,49 +1,51 @@
 <?php
 // ============================================================
-// MultiTienda — RESET de base de datos (SOLO DESARROLLO / PRUEBAS)
-// Elimina TODAS las tablas de la BD y reinstala el esquema limpio
-// (ya con FOREIGN KEYS) + la semilla inicial.
+// Orquestador MultiTiendas — RESET de base de datos (SOLO DESARROLLO)
+// Elimina TODAS las tablas y reinstala el esquema v2 + semilla.
 //
-//   Abrir:  http://localhost/api/reset-db.php?go=1
+//   Navegador: http://127.0.0.1:8082/reset-db.php?go=1      (solo localhost y debug=true)
+//   Consola:   php reset-db.php --go [--demo]
 //
-// ⚠️ BORRA TODOS LOS DATOS. No subir a produccion. Borrar tras usar.
+// Bloqueado si debug=false o si la peticion no viene de la propia maquina.
+// NUNCA subir a produccion (DESPLIEGUE-GODADDY.md lo excluye).
 // ============================================================
 
-header('Content-Type: text/html; charset=utf-8');
-$cfg = require __DIR__ . '/lib/config.php';   // solo devuelve un array (seguro requerir 2 veces)
+$cfg = require __DIR__ . '/lib/config.php';
+$cli = PHP_SAPI === 'cli';
 
-echo '<!doctype html><meta charset="utf-8"><title>Reset MultiTienda</title>';
-echo '<body style="font-family:system-ui,Segoe UI,sans-serif;max-width:720px;margin:40px auto;color:#1e1b4b">';
-echo '<h1 style="color:#be123c">MultiTienda — Reset de base de datos</h1>';
-
-if (($_GET['go'] ?? '') !== '1') {
-    echo '<p>Esto <b>elimina TODAS las tablas</b> de <code>' . htmlspecialchars($cfg['db']['name']) . '</code> y las vuelve a crear con sus relaciones (FKs) + datos iniciales.</p>';
-    echo '<p><a style="background:#be123c;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none" href="?go=1">Borrar y reinstalar</a></p>';
-    echo '</body>'; exit;
+$remoto = $_SERVER['REMOTE_ADDR'] ?? '';
+if (!$cfg['debug'] || (!$cli && !in_array($remoto, ['127.0.0.1', '::1'], true))) {
+    http_response_code(404);
+    exit('Not found');
 }
 
-// 1) Eliminar todas las tablas con una conexion propia (NO se carga Db.php aqui,
-//    para que install.php pueda requerirlo sin chocar por doble declaracion de clase).
+if ($cli) {
+    $go = in_array('--go', $argv, true);
+} else {
+    header('Content-Type: text/html; charset=utf-8');
+    $go = ($_GET['go'] ?? '') === '1';
+    echo '<!doctype html><meta charset="utf-8"><title>Reset BD</title>';
+    echo '<body style="font-family:system-ui,Segoe UI,sans-serif;max-width:760px;margin:40px auto;color:#1e1b4b">';
+    echo '<h1 style="color:#be123c">Reset de base de datos (desarrollo)</h1>';
+}
+
+if (!$go) {
+    $msg = 'Esto ELIMINA TODAS las tablas de ' . $cfg['db']['name'] . ' y reinstala el esquema v2.';
+    if ($cli) { echo $msg . "\nUsa: php reset-db.php --go [--demo]\n"; exit(1); }
+    echo '<p>' . htmlspecialchars($msg) . '</p><p><a href="?go=1&demo=1">Borrar y reinstalar (con tiendas demo)</a></p></body>';
+    exit;
+}
+
 $db = $cfg['db'];
-$charset = $db['charset'] ?? 'utf8mb4';
-try {
-    $pdo = new PDO(
-        "mysql:host={$db['host']};port={$db['port']};dbname={$db['name']};charset={$charset}",
-        $db['user'], $db['pass'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-    );
-} catch (Throwable $e) {
-    echo '<p style="color:#be123c"><b>❌ No se pudo conectar a la BD: ' . htmlspecialchars($e->getMessage()) . '</b></p></body>'; exit;
-}
-
+$pdo = new PDO("mysql:host={$db['host']};port={$db['port']};dbname={$db['name']};charset=utf8mb4",
+    $db['user'], $db['pass'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
 $tablas = $pdo->query('SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()')->fetchAll(PDO::FETCH_COLUMN);
-foreach ($tablas as $t) {
-    $pdo->exec('DROP TABLE IF EXISTS `' . $t . '`');
-}
+foreach ($tablas as $t) $pdo->exec('DROP TABLE IF EXISTS `' . $t . '`');
 $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
-$pdo = null; // liberar la conexion antes de reinstalar
-echo '<p>🗑️ Tablas eliminadas: ' . count($tablas) . '</p>';
+$pdo = null;
+echo ($cli ? '' : '<p>') . 'Tablas eliminadas: ' . count($tablas) . ($cli ? "\n" : '</p>');
 
-// 2) Reinstalar: reusa install.php (aplica schema.sql con FKs, migraciones y semilla).
-$_GET['go'] = '1';
+// Reinstalar reutilizando install.php
+if ($cli) { $argv[] = '--go'; } else { $_GET['go'] = '1'; }
 require __DIR__ . '/install.php';

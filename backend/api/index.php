@@ -39,6 +39,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
     exit;
 }
 
+// ---- Configuracion minima de seguridad ----
+if (strlen((string) $cfg['jwt_secret']) < 32) {
+    Http::fail('Servidor sin configurar: falta jwt_secret (ver lib/config.local.example.php)', 500, 'CONFIG_ERROR');
+}
+
 // ---- Conexion BD ----
 try {
     Db::init($cfg['db']);

@@ -21,3 +21,6 @@ backend/api/uploads/
 .DS_Store
 Thumbs.db
 *.log
+
+# Credenciales generadas por install.php en desarrollo
+*.local.txt

@@ -1,5 +1,13 @@
 # Despliegue de MultiTienda en GoDaddy (cPanel)
 
+> ⚠️ **DESACTUALIZADO para el Orquestador (esquema v2).** Esta guía es de MultiTienda y se reescribe en la
+> fase **F7** (ver `PLAN-ORQUESTADOR.md`). Diferencias que ya aplican hoy:
+> - Las credenciales **ya no van en `config.php`**: se copia `lib/config.local.example.php` como
+>   `lib/config.local.php` y ahí se ponen BD, `jwt_secret` (obligatorio, mín. 32 caracteres) y `login_domain`.
+> - El instalador genera contraseñas aleatorias y las muestra **una sola vez**; ya no existe `admin@levotek.mx / admin123`.
+>   El superadmin entra con `admin@levotek.com`.
+> - **No subir** `reset-db.php` ni la carpeta `backend/tests/`.
+
 Guía paso a paso para publicar el sistema en un hosting GoDaddy (cPanel + Apache + MySQL).
 Frontend (React) y backend (PHP) van en el **mismo dominio**: el front en la raíz y la API bajo `/api`.
 
