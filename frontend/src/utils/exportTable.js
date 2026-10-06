@@ -1,0 +1,70 @@
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+/**
+ * Convierte un nodo de React (lo que devuelve `render` de una columna) a texto plano,
+ * para poder exportarlo. Maneja strings, números, arreglos y elementos (badges, spans…).
+ */
+export function nodeToText(node) {
+  if (node == null || node === false || node === true) return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(nodeToText).join('');
+  if (typeof node === 'object' && node.props) return nodeToText(node.props.children);
+  return '';
+}
+
+/** Texto exportable de una celda: usa exportValue si existe, si no el render/valor crudo. */
+function cellText(col, row) {
+  if (typeof col.exportValue === 'function') return col.exportValue(row);
+  const v = col.render ? col.render(row) : row[col.key];
+  return nodeToText(v).trim();
+}
+
+/** Columnas a exportar: omite acciones y las marcadas con noExport. */
+function exportableColumns(columns) {
+  return columns.filter((c) => !c.noExport && c.key !== 'acciones');
+}
+
+/** Construye { headers, rows } a partir de columns + data de una DataTable. */
+export function buildExportData(columns, data) {
+  const cols = exportableColumns(columns);
+  const headers = cols.map((c) => c.label);
+  const rows = (data || []).map((r) => cols.map((c) => cellText(c, r)));
+  return { headers, rows };
+}
+
+const stamp = () => {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+};
+
+export function exportToExcel(columns, data, name = 'reporte') {
+  const { headers, rows } = buildExportData(columns, data);
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws['!cols'] = headers.map((h, i) => ({
+    wch: Math.min(40, Math.max(h.length, ...rows.map((r) => String(r[i] ?? '').length)) + 2),
+  }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Datos');
+  XLSX.writeFile(wb, `${name}_${stamp()}.xlsx`);
+}
+
+export function exportToPdf(columns, data, name = 'reporte', title) {
+  const { headers, rows } = buildExportData(columns, data);
+  const doc = new jsPDF({ orientation: headers.length > 6 ? 'landscape' : 'portrait', unit: 'pt' });
+  doc.setFontSize(14);
+  doc.text(title || name, 40, 40);
+  doc.setFontSize(9);
+  doc.text(new Date().toLocaleString('es-MX'), 40, 56);
+  autoTable(doc, {
+    head: [headers],
+    body: rows,
+    startY: 70,
+    styles: { fontSize: 8, cellPadding: 4 },
+    headStyles: { fillColor: [30, 41, 59] },
+    margin: { left: 40, right: 40 },
+  });
+  doc.save(`${name}_${stamp()}.pdf`);
+}

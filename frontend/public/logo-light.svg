@@ -1,0 +1,25 @@
+<svg width="240" height="60" viewBox="0 0 240 60" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MultiTienda">
+  <defs>
+    <linearGradient id="ringL" x1="6" y1="6" x2="54" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1b2c63"/>
+      <stop offset="55%" stop-color="#1d4ed8"/>
+      <stop offset="100%" stop-color="#2f8bff"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Emblema circular (badge blanco, resalta sobre fondo oscuro) -->
+  <g>
+    <circle cx="30" cy="30" r="27" fill="#ffffff"/>
+    <path d="M39.2 4.6 A27 27 0 0 1 56.6 25.3" stroke="#94a3b8" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="2.4 3.2" fill="none"/>
+    <circle cx="30" cy="30" r="23" stroke="url(#ringL)" stroke-width="3.4" fill="none"/>
+    <circle cx="30" cy="30" r="23" stroke="#e23b3b" stroke-width="3.4" fill="none" stroke-linecap="round"
+            stroke-dasharray="20 124.6" transform="rotate(122 30 30)"/>
+    <path d="M25 17 L21.5 40 L34 40" stroke="#16225a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="M28 18 L43 18" stroke="#2f8bff" stroke-width="5" stroke-linecap="round" fill="none"/>
+    <path d="M35.5 18 L32 41" stroke="#2f8bff" stroke-width="5" stroke-linecap="round" fill="none"/>
+  </g>
+
+  <!-- Wordmark en claro -->
+  <text x="66" y="33" font-family="Inter, 'Segoe UI', sans-serif" font-size="21" font-weight="800" letter-spacing="0.3" fill="#ffffff">Multi<tspan fill="#7cb3ff">Tienda</tspan></text>
+  <text x="67" y="47" font-family="Inter, 'Segoe UI', sans-serif" font-size="7.5" font-weight="600" letter-spacing="3.5" fill="#aab8d6">PUNTO DE VENTA</text>
+</svg>

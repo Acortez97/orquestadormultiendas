@@ -1,0 +1,23 @@
+# ===== MultiTienda — ignorados del repo =====
+
+# Dependencias / build
+node_modules/
+dist/
+deploy-godaddy/
+
+# Env locales (el de dev). .env.production SÍ se versiona (no lleva secretos).
+.env
+.env.local
+frontend/.env
+frontend/.env.local
+
+# Backend: credenciales/overrides LOCALES (XAMPP) — NUNCA subir a producción
+backend/api/lib/config.local.php
+
+# Imágenes subidas por el usuario (se generan en runtime)
+backend/api/uploads/
+
+# Sistema / editor
+.DS_Store
+Thumbs.db
+*.log

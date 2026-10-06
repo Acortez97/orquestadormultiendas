@@ -1,0 +1,12 @@
+# MultiTienda frontend (SPA React) — GoDaddy / Apache
+RewriteEngine On
+RewriteBase /
+
+# index.html se sirve directo
+RewriteRule ^index\.html$ - [L]
+
+# Archivos y carpetas reales (incluida /api) se sirven tal cual
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+# Todo lo demas lo maneja React Router
+RewriteRule . /index.html [L]

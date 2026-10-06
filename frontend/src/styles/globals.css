@@ -1,0 +1,161 @@
+@import "tailwindcss";
+
+/* LEVOTEK Design System — Azul corporativo / Rojo (identidad LEVOTEK Solutions) */
+@theme {
+  /* Primary: Azul (marino -> azul brillante, como el monograma LT) */
+  --color-primary-50:  #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-primary-800: #1e40af;
+  --color-primary-900: #1b2c63;
+  --color-primary-950: #16225a;
+
+  /* Accent: Rojo (acento del anillo del logo, uso puntual) */
+  --color-accent-50:  #fef2f2;
+  --color-accent-100: #fee2e2;
+  --color-accent-200: #fecaca;
+  --color-accent-300: #fca5a5;
+  --color-accent-400: #f87171;
+  --color-accent-500: #ef4444;
+  --color-accent-600: #dc2626;
+  --color-accent-700: #b91c1c;
+  --color-accent-800: #991b1b;
+  --color-accent-900: #7f1d1d;
+
+  /* Success */
+  --color-success-50:  #f0fdf4;
+  --color-success-100: #dcfce7;
+  --color-success-200: #bbf7d0;
+  --color-success-500: #22c55e;
+  --color-success-600: #16a34a;
+  --color-success-700: #15803d;
+  --color-success-800: #166534;
+
+  /* Warning */
+  --color-warning-50:  #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-200: #fde68a;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
+  --color-warning-800: #92400e;
+
+  /* Danger */
+  --color-danger-50:  #fff1f2;
+  --color-danger-100: #ffe4e6;
+  --color-danger-200: #fecdd3;
+  --color-danger-500: #f43f5e;
+  --color-danger-600: #e11d48;
+  --color-danger-700: #be123c;
+  --color-danger-800: #9f1239;
+
+  /* Semaforo */
+  --color-semaforo-verde:   #16a34a;
+  --color-semaforo-amarillo:#d97706;
+  --color-semaforo-rojo:    #dc2626;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  --animate-fade-in:      fadeIn 0.2s ease-out;
+  --animate-slide-in-up:  slideInUp 0.3s ease-out;
+  --animate-slide-in-right: slideInRight 0.3s ease-out;
+
+  @keyframes fadeIn {
+    0%   { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  @keyframes slideInUp {
+    0%   { transform: translateY(20px); opacity: 0; }
+    100% { transform: translateY(0);    opacity: 1; }
+  }
+  @keyframes slideInRight {
+    0%   { transform: translateX(100%); opacity: 0; }
+    100% { transform: translateX(0);    opacity: 1; }
+  }
+}
+
+@layer base {
+  * { @apply border-slate-200; }
+  body { @apply bg-slate-50 text-slate-900 antialiased; }
+
+  ::-webkit-scrollbar       { @apply w-1.5 h-1.5; }
+  ::-webkit-scrollbar-track { @apply bg-slate-100 rounded-full; }
+  ::-webkit-scrollbar-thumb { @apply bg-slate-300 rounded-full hover:bg-slate-400; }
+
+  :focus-visible { @apply outline-none ring-2 ring-primary-500 ring-offset-2; }
+}
+
+@layer components {
+  .input-base {
+    @apply w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg
+           placeholder:text-slate-400
+           focus:border-primary-500 focus:ring-1 focus:ring-primary-500
+           disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed
+           transition-colors duration-200;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium
+           rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium
+           rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
+           bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium
+           rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
+           bg-slate-100 text-slate-700 hover:bg-slate-200 active:bg-slate-300;
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium
+           rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
+           bg-danger-600 text-white hover:bg-danger-700 active:bg-danger-800;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium
+           rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
+           bg-transparent text-slate-600 hover:bg-slate-100 active:bg-slate-200;
+  }
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium
+           rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
+           bg-transparent border border-slate-300 text-slate-700 hover:bg-slate-50 active:bg-slate-100;
+  }
+  .btn-accent {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium
+           rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
+           bg-accent-500 text-white hover:bg-accent-600 active:bg-accent-700;
+  }
+
+  .card { @apply bg-white rounded-xl border border-slate-200 shadow-sm; }
+
+  .badge         { @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full; }
+  .badge-success { @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full bg-success-100 text-success-800; }
+  .badge-warning { @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full bg-warning-100 text-warning-800; }
+  .badge-danger  { @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full bg-danger-100  text-danger-800;  }
+  .badge-primary { @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full bg-primary-100 text-primary-800; }
+  .badge-slate   { @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full bg-slate-100   text-slate-800;   }
+  .badge-accent  { @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full bg-accent-100  text-accent-800;  }
+}
+
+@layer utilities {
+  .skeleton { @apply animate-pulse bg-slate-200 rounded; }
+
+  /* LEVOTEK gradient — marino a azul brillante */
+  .gradient-brand {
+    background: linear-gradient(135deg, #16225a 0%, #2563eb 100%);
+  }
+  .gradient-brand-text {
+    background: linear-gradient(135deg, #16225a 0%, #2563eb 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}

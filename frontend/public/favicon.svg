@@ -1,0 +1,10 @@
+<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="LEVOTEK">
+  <circle cx="24" cy="24" r="22" fill="#16225a"/>
+  <!-- acento rojo abajo-izquierda -->
+  <circle cx="24" cy="24" r="18" stroke="#e23b3b" stroke-width="3" fill="none" stroke-linecap="round"
+          stroke-dasharray="16 97" transform="rotate(122 24 24)"/>
+  <!-- Monograma LT -->
+  <path d="M20.5 13 L17.5 34 L29 34" stroke="#ffffff" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M23 14 L37 14" stroke="#3b9bff" stroke-width="4.6" stroke-linecap="round" fill="none"/>
+  <path d="M30.5 14 L27.5 35" stroke="#3b9bff" stroke-width="4.6" stroke-linecap="round" fill="none"/>
+</svg>
