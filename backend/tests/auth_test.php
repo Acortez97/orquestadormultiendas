@@ -100,6 +100,8 @@ status('Permiso con accion invalida -> 400', api('POST', '/auth/usuarios', ['usu
 Db::run("UPDATE empresa_modulos SET activo = 0 WHERE modulo = 'facturacion' AND id_empresa = (SELECT id FROM empresas WHERE slug = 'demo1')");
 status('Permiso de modulo deshabilitado en la tienda -> 400', api('POST', '/auth/usuarios', ['usuario' => 'v3', 'nombre' => 'V', 'password' => 'segura1234',
     'permisos' => ['facturacion' => ['ver' => true]]], $tA1), 400);
+status('No puede dar el modulo "usuarios" a un usuario normal -> 400', api('POST', '/auth/usuarios', ['usuario' => 'v4', 'nombre' => 'V', 'password' => 'segura1234',
+    'permisos' => ['usuarios' => ['ver' => true]]], $tA1), 400);
 $adminId = $uA1['_id'];
 status('No puede editarse a si mismo', api('PUT', "/auth/usuarios/$adminId", ['nombre' => 'Yo'], $tA1), 400);
 

@@ -272,8 +272,9 @@ $routes = [
     ['POST',   '/plataforma/tiendas/:id/entrar',     'PlataformaController::entrar',         'plataforma'],
     ['GET',    '/plataforma/tiendas/:id/conciliar',  'PlataformaController::conciliar',      'plataforma'],
     ['GET',    '/plataforma/tiendas/:id/export',     'PlataformaController::exportar',       'plataforma'],
+    ['GET',    '/plataforma/tiendas/:id/usuarios',   'PlataformaController::usuariosTienda', 'plataforma'],
+    ['POST',   '/plataforma/tiendas/:id/usuarios',   'PlataformaController::crearUsuario',   'plataforma'],
     ['GET',    '/plataforma/usuarios',               'PlataformaController::usuarios',       'plataforma'],
-    ['POST',   '/plataforma/usuarios',               'PlataformaController::crearUsuario',   'plataforma'],
     ['PUT',    '/plataforma/usuarios/:id',           'PlataformaController::editarUsuario',  'plataforma'],
     ['DELETE', '/plataforma/usuarios/:id',           'PlataformaController::desactivarUsuario', 'plataforma'],
     ['POST',   '/plataforma/usuarios/:id/reset-password', 'PlataformaController::resetPassword', 'plataforma'],
@@ -377,6 +378,11 @@ try {
         if (!Permisos::autoriza($permiso, $ctx)) {
             throw new ApiError('No tienes permiso para realizar esta accion', 403, 'FORBIDDEN');
         }
+    }
+
+    // ---- Modo soporte: toda operacion que modifica datos queda en la bitacora de la tienda ----
+    if (!empty($ctx['user']['act_as']) && $method !== 'GET') {
+        Ledger::audit($ctx, 'soporte', 'api', null, "$method $route");
     }
 
     // ---- Despacho ----

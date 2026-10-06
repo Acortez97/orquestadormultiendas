@@ -75,6 +75,8 @@ class Permisos
         foreach (Db::all('SELECT modulo, accion FROM modulo_acciones') as $r) $validas[$r['modulo'] . '.' . $r['accion']] = true;
         $out = [];
         foreach ($pares as [$m, $a]) {
+            // Administrar usuarios es exclusivo del rol admin_tienda: no se asigna como permiso suelto
+            if ($m === 'usuarios') throw new ApiError('La gestion de usuarios es exclusiva del administrador de la tienda', 400, 'VALIDATION');
             if (!in_array($m, $activos, true)) throw new ApiError("El modulo '$m' no esta habilitado en la tienda", 400, 'VALIDATION');
             if (!isset($validas["$m.$a"])) throw new ApiError("Accion invalida: $m.$a", 400, 'VALIDATION');
             $out["$m.$a"] = [$m, $a];
