@@ -1,5 +1,13 @@
-# MultiTienda API — enruta todo a index.php
+# Orquestador MultiTiendas API — enruta todo a index.php
 RewriteEngine On
+
+# Nunca listar directorios (p. ej. uploads/<carpeta-de-tienda>/)
+Options -Indexes
+
+# Archivos que no se deben descargar nunca (esquema, credenciales locales, notas, logs)
+<FilesMatch "\.(sql|txt|md|log|bak|example\.php)$">
+  Require all denied
+</FilesMatch>
 
 # Si la API NO esta en /api, ajusta esta linea (ej: RewriteBase /)
 RewriteBase /api/

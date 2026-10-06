@@ -4,7 +4,7 @@ class ConfigController
     // ---- PIN de autorizacion para listas de precio 4 y 5 ----
     public static function estadoPin(array $p, array $ctx): void
     {
-        $emp = (int) $ctx['user']['id_empresa'];
+        $emp = Tenant::id();
         $e = Db::one('SELECT pin_lista_alta, pin_lista_alta_at FROM empresas WHERE id=?', [$emp]);
         Http::ok([
             'configurado'    => !empty($e['pin_lista_alta']),
@@ -17,10 +17,10 @@ class ConfigController
         $b = Http::body();
         $pin = (string) ($b['pin'] ?? '');
         if (!preg_match('/^\d{4,6}$/', $pin)) throw new ApiError('El PIN debe ser de 4 a 6 digitos', 400, 'VALIDATION');
-        $emp = (int) $ctx['user']['id_empresa'];
+        $emp = Tenant::id();
         Db::run('UPDATE empresas SET pin_lista_alta=?, pin_lista_alta_at=NOW() WHERE id=?',
             [password_hash($pin, PASSWORD_BCRYPT), $emp]);
-        Ledger::audit($ctx, 'cambiar', 'ConfigPIN', $emp, 'PIN de listas 4/5 actualizado');
+        Ledger::audit($ctx, 'cambiar', 'ConfigPIN', null, 'PIN de listas 4/5 actualizado');
         $e = Db::one('SELECT pin_lista_alta_at FROM empresas WHERE id=?', [$emp]);
         Http::updated(['configurado' => true, 'actualizado_en' => $e['pin_lista_alta_at']], 'PIN');
     }

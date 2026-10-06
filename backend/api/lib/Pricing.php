@@ -1,5 +1,5 @@
 <?php
-// Motor de precios — replica pricing.engine del backend original.
+// Motor de precios por tienda.
 // Listas 1..5: lista1 = mas cara (1 pza), lista5 = mas barata (24+ pzas).
 class Pricing
 {
@@ -24,7 +24,8 @@ class Pricing
         $listaCliente = 1;
         if ($idCliente) {
             $cli = Db::one('SELECT lista_precios FROM clientes WHERE id=? AND id_empresa=?', [$idCliente, $idEmpresa]);
-            if ($cli) $listaCliente = max(1, min(5, (int) $cli['lista_precios']));
+            if (!$cli) throw new ApiError('Cliente no encontrado', 404, 'NOT_FOUND');
+            $listaCliente = max(1, min(5, (int) $cli['lista_precios']));
         }
 
         // 1) cargar articulos y contar prendas que cuentan para nivel (no oferta)
@@ -32,13 +33,14 @@ class Pricing
         $totalPrendas = 0;
         foreach ($lineas as $ln) {
             $idArt = id_or_null($ln['id_articulo'] ?? null);
-            if (!$idArt) throw new ApiError('Linea sin id_articulo', 400, 'VALIDATION');
+            if (!$idArt) throw new ApiError('Hay una linea sin articulo', 400, 'VALIDATION');
             if (!isset($arts[$idArt])) {
                 $a = Db::one('SELECT * FROM articulos WHERE id=? AND id_empresa=?', [$idArt, $idEmpresa]);
-                if (!$a) throw new ApiError("Articulo $idArt no encontrado", 404, 'NOT_FOUND');
+                if (!$a) throw new ApiError('Articulo no encontrado', 404, 'NOT_FOUND');
                 $arts[$idArt] = $a;
             }
-            $cant = max(0, (float) ($ln['cantidad'] ?? 0));
+            $cant = (float) ($ln['cantidad'] ?? 0);
+            if ($cant <= 0) throw new ApiError('La cantidad de "' . $arts[$idArt]['descripcion'] . '" debe ser mayor a cero', 400, 'VALIDATION');
             if (!((int) $arts[$idArt]['es_oferta'])) $totalPrendas += $cant;
         }
 
@@ -50,7 +52,8 @@ class Pricing
         foreach ($lineas as $ln) {
             $idArt = (int) $ln['id_articulo'];
             $a = $arts[$idArt];
-            $cant = max(0, (float) ($ln['cantidad'] ?? 0));
+            $cant = (float) $ln['cantidad'];
+            [$v1, $v2] = Variantes::validar($a, $ln['id_color'] ?? null, $ln['id_talla'] ?? null);
 
             if ((int) $a['es_oferta']) {
                 $precio = (float) $a['precio_oferta'];
@@ -64,16 +67,17 @@ class Pricing
             $total += $importe;
 
             $out[] = [
-                'id_articulo'     => (string) $idArt,
+                'id_articulo'     => $idArt,
                 'codigo'          => $a['codigo'],
                 'descripcion'     => $a['descripcion'],
-                'id_color'        => (string) id_or_zero($ln['id_color'] ?? 0),
-                'id_talla'        => (string) id_or_zero($ln['id_talla'] ?? 0),
+                'id_color'        => $v1 ?? 0,   // eje 1 (id_valor1); 0 = sin variante (sale como '')
+                'id_talla'        => $v2 ?? 0,   // eje 2 (id_valor2)
                 'cantidad'        => $cant,
                 'precio_unitario' => round($precio, 2),
                 'costo_unitario'  => (float) $a['costo'],
                 'lista_aplicada'  => $listaAplicada,
                 'comisiona'       => true,
+                'es_kit'          => (bool) $a['es_kit'],
                 'importe'         => $importe,
             ];
         }

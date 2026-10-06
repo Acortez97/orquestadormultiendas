@@ -15,7 +15,8 @@ frontend/.env.local
 backend/api/lib/config.local.php
 
 # Imágenes subidas por el usuario (se generan en runtime)
-backend/api/uploads/
+backend/api/uploads/*
+!backend/api/uploads/.htaccess
 
 # Sistema / editor
 .DS_Store

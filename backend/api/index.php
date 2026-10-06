@@ -26,6 +26,7 @@ require __DIR__ . '/lib/Pricing.php';
 require __DIR__ . '/lib/Ledger.php';
 require __DIR__ . '/lib/Seeder.php';
 require __DIR__ . '/lib/Usuarios.php';
+require __DIR__ . '/lib/Variantes.php';
 
 // ---- CORS ----
 $origin = $cfg['cors_origin'];
@@ -384,6 +385,13 @@ try {
 } catch (ApiError $e) {
     Db::rollbackSiAbierta();
     Http::fail($e->getMessage(), $e->status, $e->code);
+} catch (PDOException $e) {
+    Db::rollbackSiAbierta();
+    // Regla de integridad de la BD (FK compuesta, UNIQUE o CHECK): nunca se exponen detalles internos
+    if ($e->getCode() === '23000') {
+        Http::fail($cfg['debug'] ? 'Datos invalidos: ' . $e->getMessage() : 'Datos invalidos o duplicados', 400, 'INTEGRITY');
+    }
+    Http::fail($cfg['debug'] ? ($e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine()) : 'Error interno del servidor', 500, 'SERVER_ERROR');
 } catch (Throwable $e) {
     Db::rollbackSiAbierta();
     Http::fail($cfg['debug'] ? ($e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine()) : 'Error interno del servidor', 500, 'SERVER_ERROR');
