@@ -1,4 +1,5 @@
 import { aFecha } from './fechas';
+import { obtenerLogos } from './logos';
 /**
  * Impresión de tickets de 80mm para movimientos de cliente (venta, devolución, cambio).
  * Genera el HTML del ticket y lo manda a imprimir en un iframe oculto (diálogo automático).
@@ -40,7 +41,7 @@ const FORMA_LABEL = {
   monedero: 'Monedero',
 };
 
-function renderTicketHTML(t) {
+export function renderTicketHTML(t, logos = {}) {
   const tienda = t.tienda || {};
   const secciones = (t.secciones || [])
     .map((s) => {
@@ -99,8 +100,11 @@ function renderTicketHTML(t) {
   hr { border: none; border-top: 1px dashed #000; margin: 6px 0; }
   table.items { width: 100%; border-collapse: collapse; }
   .items td { vertical-align: top; padding: 1px 0; }
+  .logo { display: block; margin: 0 auto 4px; max-width: 48mm; max-height: 22mm; object-fit: contain; }
+  .plat { display: block; margin: 3px auto 0; max-width: 28mm; max-height: 7mm; object-fit: contain; }
 </style></head><body>
   <div class="center">
+    ${logos.tienda ? `<img class="logo" src="${logos.tienda.src}" alt="">` : ''}
     <h1>${esc(tienda.nombre || 'Ticket')}</h1>
     ${tienda.direccion ? `<div class="sm">${esc(tienda.direccion)}</div>` : ''}
     ${tienda.telefono ? `<div class="sm">Tel. ${esc(tienda.telefono)}</div>` : ''}
@@ -119,13 +123,14 @@ function renderTicketHTML(t) {
   ${saldosHtml}
   <hr>
   <div class="center sm">${esc(t.nota || '¡Gracias por su compra!')}</div>
+  ${logos.plataforma ? `<hr><div class="center sm muted">Sistema de punto de venta</div><img class="plat" src="${logos.plataforma.src}" alt="">` : ''}
 </body></html>`;
 }
 
-/** Imprime el ticket en un iframe oculto y abre el diálogo de impresión. */
-export function printTicket(t) {
+/** Imprime el ticket (con el logo de la tienda y el de la plataforma) en un iframe oculto. */
+export async function printTicket(t) {
   try {
-    const html = renderTicketHTML(t);
+    const html = renderTicketHTML(t, await obtenerLogos());
     const iframe = document.createElement('iframe');
     Object.assign(iframe.style, {
       position: 'fixed',

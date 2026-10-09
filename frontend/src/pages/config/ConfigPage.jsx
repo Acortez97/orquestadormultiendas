@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { configApi } from '../../services/api/endpoints';
 import SelectorColor, { colorLegible } from '../../components/common/SelectorColor';
 import { aviso } from '../../utils/avisos';
+import SubirLogo from '../../components/common/SubirLogo';
 
 /** Color de la tienda en toda la interfaz (lo ven todos sus usuarios) */
 function Apariencia() {
@@ -24,10 +25,18 @@ function Apariencia() {
       <div className="mb-4 flex items-center gap-3">
         <div className="rounded-xl bg-primary-50 p-2.5"><SwatchIcon className="h-6 w-6 text-primary-600" /></div>
         <div>
-          <h2 className="text-lg font-bold">Apariencia</h2>
-          <p className="text-sm text-slate-600">El color de tu tienda en botones, menú y punto de venta. Lo ven todos tus usuarios.</p>
+          <h2 className="text-lg font-bold">Logo y color de la tienda</h2>
+          <p className="text-sm text-slate-600">Tu marca en el sistema, los tickets y los reportes. Lo ven todos tus usuarios.</p>
         </div>
       </div>
+      <div className="mb-6">
+        <h3 className="mb-1 font-semibold">Logo de la tienda</h3>
+        <p className="mb-3 text-sm text-slate-600">Sale en el menú, en los tickets, en el corte de caja y en los reportes que exportes a PDF.</p>
+        <SubirLogo src={user?.tienda?.logo_url || null} puede={puede}
+          onSubir={async (dataUrl) => { await configApi.subirLogo(dataUrl); await refreshUser(); }}
+          onQuitar={async () => { await configApi.quitarLogo(); await refreshUser(); }} />
+      </div>
+      <h3 className="mb-1 font-semibold">Color</h3>
       {puede ? (
         <div className="space-y-4">
           <SelectorColor value={color} onChange={setColor} />

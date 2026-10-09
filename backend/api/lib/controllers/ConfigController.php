@@ -10,6 +10,35 @@ class ConfigController
         Http::updated(['color' => $color], 'Color');
     }
 
+    // ---- Logo de la tienda (tickets, cortes, reportes y menu) ----
+    public static function subirLogo(array $p, array $ctx): void
+    {
+        $nombre = Logos::guardar((string) (Http::bodyCrudo()['dataUrl'] ?? ''), Logos::dirTienda());
+        $url = Logos::url(Tenant::empresa()['uploads_token'] . '/' . $nombre);
+        Db::run('UPDATE empresas SET logo_url = ? WHERE id = ?', [$url, Tenant::id()]);
+        Ledger::audit($ctx, 'cambiar', 'ConfigLogo', null, 'Logo de la tienda actualizado');
+        Http::updated(['logo_url' => $url], 'Logo');
+    }
+
+    public static function quitarLogo(array $p, array $ctx): void
+    {
+        Logos::borrar(Logos::dirTienda());
+        Db::run('UPDATE empresas SET logo_url = NULL WHERE id = ?', [Tenant::id()]);
+        Ledger::audit($ctx, 'cambiar', 'ConfigLogo', null, 'Logo de la tienda quitado');
+        Http::ok(['logo_url' => null], 'Logo quitado');
+    }
+
+    /** Logos para imprimir (data URL): el de la tienda y el de la plataforma */
+    public static function logos(array $p, array $ctx): void
+    {
+        $e = Tenant::empresa();
+        Http::ok([
+            'tienda' => Logos::dataUrl(Logos::archivoTienda()),
+            'tienda_url' => $e['logo_url'] ?? null,   // por si el logo es una URL externa
+            'plataforma' => Logos::dataUrl(Logos::actual(Logos::dirPlataforma())),
+        ]);
+    }
+
     // ---- PIN de autorizacion para listas de precio 4 y 5 ----
     public static function estadoPin(array $p, array $ctx): void
     {

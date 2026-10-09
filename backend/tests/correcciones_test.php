@@ -384,4 +384,25 @@ check('Sumar: agrega a lo que hay', !empty($rs['aplicado']) && $celda('CH') == 6
 status('Sin permiso de catálogos no hay carga masiva', api('POST', '/importar/articulos', ['aplicar' => false, 'filas' => $filasCarga], $tCat), 403);
 status('Sin permiso de inventario no se cargan existencias', api('POST', '/importar/existencias', ['aplicar' => false, 'filas' => [['codigo' => 'MAS-002']]], $tCat), 403);
 
+// ------------------------------------------------------------
+seccion('Logos de la tienda y de la plataforma (tickets y reportes)');
+$png = 'data:image/png;base64,' . 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+$rl = api('PUT', '/config-sistema/logo', ['dataUrl' => $png], $t);
+status('La tienda sube su logo (PNG)', $rl, 200);
+check('La sesión trae la URL del logo', str_contains((string) (d(api('GET', '/auth/me', null, $t))['tienda']['logo_url'] ?? ''), '/uploads/'));
+status('SVG no se acepta como logo', api('PUT', '/config-sistema/logo', ['dataUrl' => 'data:image/svg+xml;base64,' . base64_encode('<svg onload="alert(1)"></svg>')], $t), 400);
+status('Texto disfrazado de imagen no se acepta', api('PUT', '/config-sistema/logo', ['dataUrl' => 'data:image/png;base64,' . base64_encode('<?php echo 1; ?>')], $t), 400);
+status('Sin permiso de configuración no sube logo', api('PUT', '/config-sistema/logo', ['dataUrl' => $png], $tCat), 403);
+check('Los logos para imprimir traen el de la tienda', str_starts_with((string) (d(api('GET', '/tienda/logos', null, $t))['tienda'] ?? ''), 'data:image/png;base64,'));
+$c3 = credenciales();
+[$tB2] = entrar('admin@demo2.levotek.com', $c3['admin@demo2.levotek.com']);
+check('Otra tienda no recibe ese logo', (d(api('GET', '/tienda/logos', null, $tB2))['tienda'] ?? null) === null);
+status('El superadmin sube el logo de la plataforma', api('PUT', '/plataforma/logo', ['dataUrl' => $png], $tSA), 200);
+check('Todas las tiendas imprimen el logo de la plataforma', str_starts_with((string) (d(api('GET', '/tienda/logos', null, $tB2))['plataforma'] ?? ''), 'data:image/png;base64,'));
+status('Una tienda no puede cambiar el logo de la plataforma', api('PUT', '/plataforma/logo', ['dataUrl' => $png], $t), 404);
+status('Quitar el logo de la plataforma', api('DELETE', '/plataforma/logo', null, $tSA), 200);
+status('Quitar el logo de la tienda', api('DELETE', '/config-sistema/logo', null, $t), 200);
+$tiendaMe = d(api('GET', '/auth/me', null, $t))['tienda'] ?? [];
+check('Sin logo, la sesión ya no lo trae', array_key_exists('logo_url', $tiendaMe) && $tiendaMe['logo_url'] === null);
+
 fin();

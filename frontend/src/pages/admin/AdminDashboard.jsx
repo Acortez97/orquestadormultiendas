@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import DataTable from '../../components/common/DataTable';
 import { plataformaApi } from '../../services/api/endpoints';
+import SubirLogo from '../../components/common/SubirLogo';
 
 const money = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n || 0);
 
@@ -15,7 +16,9 @@ function Tarjeta({ titulo, valor, color = 'text-slate-900' }) {
 
 export default function AdminDashboard() {
   const [d, setD] = useState(null);
+  const [logo, setLogo] = useState(null);
   useEffect(() => { plataformaApi.dashboard().then((r) => setD(r.data)); }, []);
+  useEffect(() => { plataformaApi.logo().then((r) => setLogo(r.data?.logo || null)).catch(() => {}); }, []);
   const t = d?.totales || {};
 
   return (
@@ -28,6 +31,14 @@ export default function AdminDashboard() {
         <Tarjeta titulo="Ventas hoy" valor={money(t.ventas_hoy)} color="text-primary-700" />
         <Tarjeta titulo="Ventas del mes" valor={money(t.ventas_mes)} color="text-primary-700" />
       </div>
+      <section className="card p-5">
+        <h2 className="text-lg font-bold">Logo de la plataforma (LEVOTEK)</h2>
+        <p className="mb-4 text-sm text-slate-600">Sale en los tickets, cortes y reportes de todas las tiendas, junto al logo de cada negocio.</p>
+        <SubirLogo src={logo}
+          onSubir={async (dataUrl) => setLogo((await plataformaApi.subirLogo(dataUrl)).data?.logo || null)}
+          onQuitar={async () => { await plataformaApi.quitarLogo(); setLogo(null); }} />
+      </section>
+
       <DataTable
         loading={!d}
         data={d?.tiendas || []}

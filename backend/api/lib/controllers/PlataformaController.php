@@ -220,6 +220,26 @@ class PlataformaController
         self::modulosTienda($p, $ctx);
     }
 
+    // ---- Logo de la plataforma (LEVOTEK): sale en tickets y reportes de todas las tiendas ----
+    public static function logo(array $p, array $ctx): void
+    {
+        Http::ok(['logo' => Logos::dataUrl(Logos::actual(Logos::dirPlataforma()))]);
+    }
+
+    public static function subirLogo(array $p, array $ctx): void
+    {
+        Logos::guardar((string) (Http::bodyCrudo()['dataUrl'] ?? ''), Logos::dirPlataforma());
+        Ledger::audit($ctx, 'logo_plataforma', 'plataforma', null, 'Logo de la plataforma actualizado');
+        self::logo($p, $ctx);
+    }
+
+    public static function quitarLogo(array $p, array $ctx): void
+    {
+        Logos::borrar(Logos::dirPlataforma());
+        Ledger::audit($ctx, 'logo_plataforma', 'plataforma', null, 'Logo de la plataforma quitado');
+        Http::ok(['logo' => null], 'Logo quitado');
+    }
+
     /** Token temporal para operar como la tienda (soporte). Todo queda en bitacora como "Soporte". */
     public static function entrar(array $p, array $ctx): void
     {

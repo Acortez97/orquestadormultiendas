@@ -69,6 +69,11 @@ dicen "MultiTienda"; la tienda ve su propio nombre/logo).
   fechas `yyyy-mm-dd` locales (`utils/fechas.js`) y lee las del API con `aFecha()`.
 - **Costos:** solo los ve quien tiene `reportes.costos`, `catalogos.crear/editar` o `compras.crear/editar`
   (`Permisos::$verCostos`); los demás reciben `costo: null`. Listar clientes/empleados exige un permiso que los use.
+- **Logos** (`lib/Logos.php`): el de la tienda (Configuración › Logo y color, `configuracion.editar`;
+  `uploads/<uploads_token>/logo-*`, `empresas.logo_url`) y el de la plataforma LEVOTEK (Tablero del superadmin;
+  `uploads/plataforma/logo-*`). Solo png/jpg/webp (nunca svg), máx. 2 MB; el navegador los reduce a 600 px.
+  `GET /tienda/logos` los da como data URL; `utils/logos.js` (cache ligada a la sesion) los pone en tickets
+  (`utils/ticket.js`), corte (`utils/corte.js`) y PDF de tablas/reportes (`utils/exportTable.js`).
 - **Carga masiva** (`ImportController`, front `components/common/CargaMasiva.jsx` + `utils/cargaMasiva.js`): plantilla
   Excel → el navegador lee el archivo (xlsx/csv, UTF-8 o windows-1252) → `POST /importar/articulos|existencias`
   con `aplicar=false` revisa dentro de una transaccion que se revierte (resumen + errores por renglon) y
@@ -128,7 +133,7 @@ php backend/api/reset-db.php --go --demo && php backend/tests/auth_test.php     
 php backend/api/reset-db.php --go --demo && php backend/tests/aislamiento_api_test.php # 200 flujo completo + ataques
 php backend/api/reset-db.php --go --demo && php backend/tests/plataforma_test.php      # 64  panel de plataforma
 php backend/api/reset-db.php --go --demo && php backend/tests/cobros_test.php          # 44  cobros, cuentas, caja y corte
-php backend/api/reset-db.php --go --demo && php backend/tests/correcciones_test.php    # 133 regresión: revisión 2026-10-08, rediseño y carga masiva
+php backend/api/reset-db.php --go --demo && php backend/tests/correcciones_test.php    # 146 regresión: revisión 2026-10-08, rediseño, carga masiva y logos
 cd frontend && npm run build                                                           # JS principal ~323 KB
 ```
 **Datos de prueba para revisar en pantalla:** `php backend/api/reset-db.php --go --demo && php herramientas/datos_prueba.php`

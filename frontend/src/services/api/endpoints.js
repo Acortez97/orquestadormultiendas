@@ -234,6 +234,10 @@ export const configApi = {
   cambiarPinListaAlta: (pin) => put('/config-sistema/pin-lista-alta', { pin }),
   // Color de la tienda en la interfaz ('' = el predeterminado)
   cambiarColor: (color) => put('/config-sistema/color', { color }),
+  // Logo de la tienda (data URL png/jpg/webp) y logos para imprimir
+  subirLogo: (dataUrl) => put('/config-sistema/logo', { dataUrl }),
+  quitarLogo: () => del('/config-sistema/logo'),
+  logos: () => get('/tienda/logos'),
 };
 
 // ---- Carga masiva (aplicar=false revisa sin guardar) ----
@@ -261,6 +265,9 @@ export const usuariosTiendaApi = {
 // ---- Plataforma (solo superadmin) ----
 export const plataformaApi = {
   dashboard: () => get('/plataforma/dashboard'),
+  logo: () => get('/plataforma/logo'),
+  subirLogo: (dataUrl) => put('/plataforma/logo', { dataUrl }),
+  quitarLogo: () => del('/plataforma/logo'),
   modulos: () => get('/plataforma/modulos'),
   tiendas: (params) => get('/plataforma/tiendas', params),
   tienda: (id) => get(`/plataforma/tiendas/${id}`),

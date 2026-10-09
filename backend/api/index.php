@@ -28,6 +28,7 @@ require __DIR__ . '/lib/Seeder.php';
 require __DIR__ . '/lib/Usuarios.php';
 require __DIR__ . '/lib/Variantes.php';
 require __DIR__ . '/lib/Cobros.php';
+require __DIR__ . '/lib/Logos.php';
 
 // ---- CORS ----
 $origin = $cfg['cors_origin'];
@@ -268,6 +269,9 @@ $routes = [
     ['GET',    '/config-sistema/pin-lista-alta', 'ConfigController::estadoPin',  ['configuracion.ver', 'clientes.crear', 'clientes.editar']],
     ['PUT',    '/config-sistema/pin-lista-alta', 'ConfigController::cambiarPin', 'configuracion.editar'],
     ['PUT',    '/config-sistema/color',          'ConfigController::cambiarColor', 'configuracion.editar'],
+    ['PUT',    '/config-sistema/logo',           'ConfigController::subirLogo',    'configuracion.editar'],
+    ['DELETE', '/config-sistema/logo',           'ConfigController::quitarLogo',   'configuracion.editar'],
+    ['GET',    '/tienda/logos',                  'ConfigController::logos',        'tienda'],
     // Carga masiva (Excel / CSV): revisar y aplicar
     ['POST',   '/importar/articulos',            'ImportController::articulos',   'catalogos.crear'],
     ['POST',   '/importar/existencias',          'ImportController::existencias', 'almacen.ajustar'],
@@ -284,6 +288,9 @@ $routes = [
     // ===== Plataforma (solo superadmin) =====
     ['GET',    '/plataforma/dashboard',              'PlataformaController::dashboard',      'plataforma'],
     ['GET',    '/plataforma/modulos',                'PlataformaController::modulos',        'plataforma'],
+    ['GET',    '/plataforma/logo',                   'PlataformaController::logo',           'plataforma'],
+    ['PUT',    '/plataforma/logo',                   'PlataformaController::subirLogo',      'plataforma'],
+    ['DELETE', '/plataforma/logo',                   'PlataformaController::quitarLogo',     'plataforma'],
     ['GET',    '/plataforma/tiendas',                'PlataformaController::tiendas',        'plataforma'],
     ['POST',   '/plataforma/tiendas',                'PlataformaController::crearTienda',    'plataforma'],
     ['GET',    '/plataforma/tiendas/:id',            'PlataformaController::tienda',         'plataforma'],

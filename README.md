@@ -28,7 +28,7 @@ Acceso con correo + contraseña, donde el dominio identifica la tienda:
 
 Fases **F0–F7 completas** (ver [PLAN-ORQUESTADOR.md](PLAN-ORQUESTADOR.md)): esquema aislado por tienda, núcleo de
 seguridad (ids opacos, login por dominio, permisos por acción), los 21 controladores adaptados, API de plataforma,
-panel `/admin`, panel de tienda y empaquetado para GoDaddy. **570 pruebas automáticas** en verde.
+panel `/admin`, panel de tienda y empaquetado para GoDaddy. **583 pruebas automáticas** en verde.
 
 Cobros: cada pago con tarjeta pide la **terminal** (y el dinero queda en la cuenta de esa terminal), cada
 transferencia o cheque pide la **cuenta destino**, y el efectivo queda en la caja de la tienda; el corte de caja,

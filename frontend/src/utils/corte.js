@@ -1,4 +1,5 @@
 import { aFecha } from './fechas';
+import { obtenerLogos } from './logos';
 /**
  * Impresión / exportación a PDF del Corte de Caja.
  *
@@ -175,9 +176,13 @@ function renderCorteHTML(preview, opts = {}) {
   .nota-head { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; }
   .foot { margin-top: 14px; text-align: center; color: #94a3b8; font-size: 9px; }
 </style></head><body>
-  <div class="head">
+  <div class="head" style="display:flex;align-items:center;gap:14px">
+    ${opts.logos?.tienda ? `<img src="${opts.logos.tienda.src}" alt="" style="max-height:48px;max-width:140px;object-fit:contain">` : ''}
+    <div style="flex:1">
     <h1>Corte de Caja</h1>
     <div class="meta">${esc(tiendaNombre)} · Fecha: ${esc(fechaCorta(fecha))} · Generado: ${esc(fechaHora())}</div>
+    </div>
+    ${opts.logos?.plataforma ? `<img src="${opts.logos.plataforma.src}" alt="" style="max-height:28px;max-width:110px;object-fit:contain;opacity:.85">` : ''}
   </div>
   <div class="cards">${cards}</div>
   ${seccion('Por forma de pago', `<table class="tbl"><thead><tr><th>Forma</th><th class="right">Monto</th></tr></thead><tbody>${formas || '<tr><td colspan="2" class="muted center">—</td></tr>'}</tbody></table>`)}
@@ -203,9 +208,9 @@ function renderCorteHTML(preview, opts = {}) {
 }
 
 /** Imprime el corte en un iframe oculto (el usuario puede Guardar como PDF). */
-export function printCorte(preview, opts = {}) {
+export async function printCorte(preview, opts = {}) {
   try {
-    const html = renderCorteHTML(preview, opts);
+    const html = renderCorteHTML(preview, { ...opts, logos: await obtenerLogos() });
     const iframe = document.createElement('iframe');
     Object.assign(iframe.style, { position: 'fixed', right: '0', bottom: '0', width: '0', height: '0', border: '0' });
     document.body.appendChild(iframe);
