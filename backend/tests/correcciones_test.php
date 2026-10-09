@@ -405,4 +405,22 @@ status('Quitar el logo de la tienda', api('DELETE', '/config-sistema/logo', null
 $tiendaMe = d(api('GET', '/auth/me', null, $t))['tienda'] ?? [];
 check('Sin logo, la sesión ya no lo trae', array_key_exists('logo_url', $tiendaMe) && $tiendaMe['logo_url'] === null);
 
+// El superadmin sube el logo por la tienda: es el mismo que la tienda ve y puede cambiar
+$rLT = api('PUT', "/plataforma/tiendas/{$tienda['_id']}/logo", ['dataUrl' => $png], $tSA);
+status('El superadmin sube el logo de una tienda (archivo, no URL)', $rLT, 200);
+$urlSA = (string) (d($rLT)['logo_url'] ?? '');
+check('La tienda lo ve en su sesión y en sus logos para imprimir', $urlSA !== ''
+    && (d(api('GET', '/auth/me', null, $t))['tienda']['logo_url'] ?? null) === $urlSA
+    && str_starts_with((string) (d(api('GET', '/tienda/logos', null, $t))['tienda'] ?? ''), 'data:image/png;base64,'));
+check('La otra tienda sigue sin logo', (d(api('GET', '/tienda/logos', null, $tB2))['tienda'] ?? null) === null);
+api('PUT', "/plataforma/tiendas/{$tienda['_id']}", ['logo_url' => 'https://otro-sitio.example/x.png'], $tSA);
+check('Editar la tienda ya no acepta una URL de logo', (d(api('GET', '/auth/me', null, $t))['tienda']['logo_url'] ?? null) === $urlSA);
+status('La tienda lo cambia desde Configuración', api('PUT', '/config-sistema/logo', ['dataUrl' => $png], $t), 200);
+$urlTienda = (string) (d(api('GET', "/plataforma/tiendas/{$tienda['_id']}", null, $tSA))['logo_url'] ?? '');
+check('El superadmin ve el logo nuevo de la tienda', $urlTienda !== '' && $urlTienda !== $urlSA);
+status('Una tienda no puede subir el logo de otra por la ruta de plataforma', api('PUT', "/plataforma/tiendas/{$tienda['_id']}/logo", ['dataUrl' => $png], $tB2), 404);
+status('SVG tampoco se acepta desde la plataforma', api('PUT', "/plataforma/tiendas/{$tienda['_id']}/logo", ['dataUrl' => 'data:image/svg+xml;base64,' . base64_encode('<svg/>')], $tSA), 400);
+status('El superadmin quita el logo de la tienda', api('DELETE', "/plataforma/tiendas/{$tienda['_id']}/logo", null, $tSA), 200);
+check('La tienda queda sin logo', (d(api('GET', '/tienda/logos', null, $t))['tienda'] ?? null) === null);
+
 fin();

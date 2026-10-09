@@ -149,12 +149,11 @@ class PlataformaController
         }
         $iva = array_key_exists('iva', $b) ? (float) $b['iva'] : (float) $e['iva'];
         if ($iva < 0 || $iva >= 1) throw new ApiError('El IVA debe ser una fraccion, p. ej. 0.16', 400, 'VALIDATION');
-        Db::run('UPDATE empresas SET nombre = ?, rfc = ?, iva = ?, telefono = ?, direccion = ?, logo_url = ?, max_usuarios = ?, max_almacenes = ?, notas = ? WHERE id = ?', [
+        Db::run('UPDATE empresas SET nombre = ?, rfc = ?, iva = ?, telefono = ?, direccion = ?, max_usuarios = ?, max_almacenes = ?, notas = ? WHERE id = ?', [
             array_key_exists('nombre', $b) && trim((string) $b['nombre']) !== '' ? trim((string) $b['nombre']) : $e['nombre'],
             array_key_exists('rfc', $b) ? $b['rfc'] : $e['rfc'], $iva,
             array_key_exists('telefono', $b) ? $b['telefono'] : $e['telefono'],
             array_key_exists('direccion', $b) ? $b['direccion'] : $e['direccion'],
-            array_key_exists('logo_url', $b) ? $b['logo_url'] : $e['logo_url'],
             array_key_exists('max_usuarios', $b) ? self::limite($b['max_usuarios']) : $e['max_usuarios'],
             array_key_exists('max_almacenes', $b) ? self::limite($b['max_almacenes']) : $e['max_almacenes'],
             array_key_exists('notas', $b) ? $b['notas'] : $e['notas'], $e['id']]);
@@ -238,6 +237,23 @@ class PlataformaController
         Logos::borrar(Logos::dirPlataforma());
         Ledger::audit($ctx, 'logo_plataforma', 'plataforma', null, 'Logo de la plataforma quitado');
         Http::ok(['logo' => null], 'Logo quitado');
+    }
+
+    // ---- Logo de una tienda: el superadmin lo sube por ella; es el mismo que la tienda ve y cambia en Configuracion ----
+    public static function subirLogoTienda(array $p, array $ctx): void
+    {
+        $e = self::tiendaFila((int) $p['id']);
+        Logos::subirTienda($e, (string) (Http::bodyCrudo()['dataUrl'] ?? ''));
+        Ledger::audit($ctx, 'editar_tienda', 'tienda', $e['id'], 'Logo de la tienda ' . $e['slug'] . ' actualizado');
+        Http::updated(self::fmtTienda(self::tiendaFila((int) $e['id']), $ctx), 'Logo');
+    }
+
+    public static function quitarLogoTienda(array $p, array $ctx): void
+    {
+        $e = self::tiendaFila((int) $p['id']);
+        Logos::quitarTienda($e);
+        Ledger::audit($ctx, 'editar_tienda', 'tienda', $e['id'], 'Logo de la tienda ' . $e['slug'] . ' quitado');
+        Http::ok(self::fmtTienda(self::tiendaFila((int) $e['id']), $ctx), 'Logo quitado');
     }
 
     /** Token temporal para operar como la tienda (soporte). Todo queda en bitacora como "Soporte". */

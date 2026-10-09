@@ -16,9 +16,10 @@ class Logos
         return __DIR__ . '/../uploads';
     }
 
-    public static function dirTienda(): string
+    /** Carpeta de la tienda activa, o de la fila de empresas que se pase (panel de plataforma) */
+    public static function dirTienda(?array $empresa = null): string
     {
-        return self::dirUploads() . '/' . Tenant::empresa()['uploads_token'];
+        return self::dirUploads() . '/' . ($empresa ?? Tenant::empresa())['uploads_token'];
     }
 
     public static function dirPlataforma(): string
@@ -72,6 +73,21 @@ class Logos
         $ext = strtolower(pathinfo($archivo, PATHINFO_EXTENSION));
         if (!isset(self::MIME[$ext])) return null;
         return 'data:' . self::MIME[$ext] . ';base64,' . base64_encode((string) file_get_contents($archivo));
+    }
+
+    /** Sube el logo de una tienda (lo usan la propia tienda y el superadmin) y lo deja en empresas.logo_url */
+    public static function subirTienda(array $empresa, string $dataUrl): string
+    {
+        $nombre = self::guardar($dataUrl, self::dirTienda($empresa));
+        $url = self::url($empresa['uploads_token'] . '/' . $nombre);
+        Db::run('UPDATE empresas SET logo_url = ? WHERE id = ?', [$url, $empresa['id']]);
+        return $url;
+    }
+
+    public static function quitarTienda(array $empresa): void
+    {
+        self::borrar(self::dirTienda($empresa));
+        Db::run('UPDATE empresas SET logo_url = NULL WHERE id = ?', [$empresa['id']]);
     }
 
     /** Logo de la tienda activa (solo si se subio aqui; un logo_url externo se deja al navegador) */

@@ -4,6 +4,7 @@ import Swal from '../../utils/swal';
 import { PlusIcon, EllipsisHorizontalIcon } from '@heroicons/react/24/outline';
 import Modal from '../../components/common/Modal';
 import SelectorColor, { colorLegible } from '../../components/common/SelectorColor';
+import SubirLogo from '../../components/common/SubirLogo';
 import { iniciales } from '../../components/layout/Marca';
 import { plataformaApi } from '../../services/api/endpoints';
 import { useAuth } from '../../contexts/AuthContext';
@@ -73,7 +74,7 @@ export default function AdminTiendas() {
     try {
       await plataformaApi.editarTienda(actual._id, {
         nombre: form.nombre, rfc: form.rfc, iva: Number(form.iva) / 100, telefono: form.telefono, direccion: form.direccion,
-        logo_url: form.logo_url, notas: form.notas, max_usuarios: form.max_usuarios || null, max_almacenes: form.max_almacenes || null,
+        notas: form.notas, max_usuarios: form.max_usuarios || null, max_almacenes: form.max_almacenes || null,
         color: form.color || '',
       });
       setModal(null); cargar();
@@ -280,10 +281,16 @@ export default function AdminTiendas() {
           {campo('iva', 'IVA (%)', { type: 'number', min: 0, max: 99 })}
           {campo('telefono', 'Teléfono')}
           {campo('direccion', 'Dirección')}
-          {campo('logo_url', 'URL del logo')}
           {campo('max_usuarios', 'Máx. usuarios', { type: 'number', min: 1 })}
           {campo('max_almacenes', 'Máx. almacenes', { type: 'number', min: 1 })}
           {campo('notas', 'Notas internas')}
+          <div className="sm:col-span-2">
+            <p className="mb-1 text-sm">Logo de la tienda</p>
+            <p className="mb-2 text-xs text-slate-600">Se guarda al subirlo. Es el mismo que la tienda ve en Configuración y que puede cambiar ella misma.</p>
+            <SubirLogo src={actual?.logo_url || ''}
+              onSubir={async (dataUrl) => { const r = await plataformaApi.subirLogoTienda(actual._id, dataUrl); setActual(r.data); cargar(); }}
+              onQuitar={async () => { const r = await plataformaApi.quitarLogoTienda(actual._id); setActual(r.data); cargar(); }} />
+          </div>
           <div className="sm:col-span-2">
             <p className="mb-2 text-sm">Color de la tienda en la interfaz</p>
             <SelectorColor value={form.color || ''} onChange={(c) => setForm({ ...form, color: c })} />

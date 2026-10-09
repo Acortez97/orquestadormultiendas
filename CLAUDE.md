@@ -70,7 +70,8 @@ dicen "MultiTienda"; la tienda ve su propio nombre/logo).
 - **Costos:** solo los ve quien tiene `reportes.costos`, `catalogos.crear/editar` o `compras.crear/editar`
   (`Permisos::$verCostos`); los demás reciben `costo: null`. Listar clientes/empleados exige un permiso que los use.
 - **Logos** (`lib/Logos.php`): el de la tienda (Configuración › Logo y color, `configuracion.editar`;
-  `uploads/<uploads_token>/logo-*`, `empresas.logo_url`) y el de la plataforma LEVOTEK (Tablero del superadmin;
+  `uploads/<uploads_token>/logo-*`, `empresas.logo_url`; el superadmin también lo sube o quita desde Tiendas ›
+  Editar con `PUT/DELETE /plataforma/tiendas/:id/logo`, es el mismo archivo y la tienda lo puede cambiar; ya no se acepta URL) y el de la plataforma LEVOTEK (Tablero del superadmin;
   `uploads/plataforma/logo-*`). Solo png/jpg/webp (nunca svg), máx. 2 MB; el navegador los reduce a 600 px.
   `GET /tienda/logos` los da como data URL; `utils/logos.js` (cache ligada a la sesion) los pone en tickets
   (`utils/ticket.js`), corte (`utils/corte.js`) y PDF de tablas/reportes (`utils/exportTable.js`).
@@ -133,7 +134,7 @@ php backend/api/reset-db.php --go --demo && php backend/tests/auth_test.php     
 php backend/api/reset-db.php --go --demo && php backend/tests/aislamiento_api_test.php # 200 flujo completo + ataques
 php backend/api/reset-db.php --go --demo && php backend/tests/plataforma_test.php      # 64  panel de plataforma
 php backend/api/reset-db.php --go --demo && php backend/tests/cobros_test.php          # 49  cobros, cuentas, caja y corte
-php backend/api/reset-db.php --go --demo && php backend/tests/correcciones_test.php    # 146 regresión: revisión 2026-10-08, rediseño, carga masiva y logos
+php backend/api/reset-db.php --go --demo && php backend/tests/correcciones_test.php    # 156 regresión: revisión 2026-10-08, rediseño, carga masiva y logos
 cd frontend && npm run build                                                           # JS principal ~323 KB
 ```
 **Datos de prueba para revisar en pantalla:** `php backend/api/reset-db.php --go --demo && php herramientas/datos_prueba.php`

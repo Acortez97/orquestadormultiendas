@@ -295,6 +295,8 @@ $routes = [
     ['POST',   '/plataforma/tiendas',                'PlataformaController::crearTienda',    'plataforma'],
     ['GET',    '/plataforma/tiendas/:id',            'PlataformaController::tienda',         'plataforma'],
     ['PUT',    '/plataforma/tiendas/:id',            'PlataformaController::editarTienda',   'plataforma'],
+    ['PUT',    '/plataforma/tiendas/:id/logo',       'PlataformaController::subirLogoTienda', 'plataforma'],
+    ['DELETE', '/plataforma/tiendas/:id/logo',       'PlataformaController::quitarLogoTienda','plataforma'],
     ['PATCH',  '/plataforma/tiendas/:id/estado',     'PlataformaController::estadoTienda',   'plataforma'],
     ['PUT',    '/plataforma/tiendas/:id/aviso-pago', 'PlataformaController::avisoPago',      'plataforma'],
     ['GET',    '/plataforma/tiendas/:id/modulos',    'PlataformaController::modulosTienda',  'plataforma'],

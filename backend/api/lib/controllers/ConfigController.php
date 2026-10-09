@@ -13,17 +13,14 @@ class ConfigController
     // ---- Logo de la tienda (tickets, cortes, reportes y menu) ----
     public static function subirLogo(array $p, array $ctx): void
     {
-        $nombre = Logos::guardar((string) (Http::bodyCrudo()['dataUrl'] ?? ''), Logos::dirTienda());
-        $url = Logos::url(Tenant::empresa()['uploads_token'] . '/' . $nombre);
-        Db::run('UPDATE empresas SET logo_url = ? WHERE id = ?', [$url, Tenant::id()]);
+        $url = Logos::subirTienda(Tenant::empresa(), (string) (Http::bodyCrudo()['dataUrl'] ?? ''));
         Ledger::audit($ctx, 'cambiar', 'ConfigLogo', null, 'Logo de la tienda actualizado');
         Http::updated(['logo_url' => $url], 'Logo');
     }
 
     public static function quitarLogo(array $p, array $ctx): void
     {
-        Logos::borrar(Logos::dirTienda());
-        Db::run('UPDATE empresas SET logo_url = NULL WHERE id = ?', [Tenant::id()]);
+        Logos::quitarTienda(Tenant::empresa());
         Ledger::audit($ctx, 'cambiar', 'ConfigLogo', null, 'Logo de la tienda quitado');
         Http::ok(['logo_url' => null], 'Logo quitado');
     }
