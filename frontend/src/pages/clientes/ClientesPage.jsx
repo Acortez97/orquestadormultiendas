@@ -6,6 +6,7 @@ import Modal from '../../components/common/Modal';
 import EstadoCuentaCliente from '../../components/common/EstadoCuentaCliente';
 import { clientesApi, almacenesApi, monederoApi, configApi } from '../../services/api/endpoints';
 import { useAuth } from '../../contexts/AuthContext';
+import { aviso } from '../../utils/avisos';
 
 const money = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n || 0);
 const vacio = {
@@ -77,11 +78,13 @@ export default function ClientesPage() {
       pin = value;
     }
     try {
-      const payload = { ...form, id_tienda: form.id_tienda || undefined };
+      // los saldos no se editan aqui (solo cambian con movimientos) y el credito se da desde el boton "Crédito"
+      const { saldo_credito: _sc, saldo_favor: _sf, ...datos } = form;
+      const payload = { ...datos, id_tienda: form.id_tienda || undefined };
       if (pin) payload.pin = pin;
       if (editId) await clientesApi.actualizar(editId, payload); else await clientesApi.crear(payload);
       setOpen(false); cargar();
-      Swal.fire({ icon: 'success', title: 'Guardado', timer: 1200, showConfirmButton: false });
+      aviso('Guardado');
     } catch (e) { Swal.fire('Error', e.message, 'error'); }
   };
 
@@ -100,7 +103,7 @@ export default function ClientesPage() {
       const r = await configApi.cambiarPinListaAlta(pinForm.pin);
       setPinEstado(r.data);
       setShowPin(false);
-      Swal.fire({ icon: 'success', title: 'PIN actualizado', timer: 1400, showConfirmButton: false });
+      aviso('PIN actualizado');
     } catch (e) {
       Swal.fire('Error', e.message, 'error');
     } finally {
@@ -110,10 +113,15 @@ export default function ClientesPage() {
 
   const autorizarCredito = async (r) => {
     const { value } = await Swal.fire({
-      title: `Autorizar crédito — ${r.nombre}`,
-      html: '<input id="lim" class="swal2-input" placeholder="Límite de crédito" type="number"><input id="plz" class="swal2-input" placeholder="Plazo (días)" type="number">',
+      title: `${r.forma_pago === 'Credito' ? 'Cambiar crédito' : 'Autorizar crédito'} — ${r.nombre}`,
+      html: `<input id="lim" class="swal2-input" placeholder="Límite de crédito" type="number" min="1" value="${r.forma_pago === 'Credito' ? Number(r.limite_credito || 0) : ''}">`
+        + `<input id="plz" class="swal2-input" placeholder="Plazo (días)" type="number" min="0" value="${r.forma_pago === 'Credito' ? Number(r.plazo_dias || 0) : ''}">`,
       showCancelButton: true,
-      preConfirm: () => ({ limite_credito: Number(document.getElementById('lim').value), plazo_dias: Number(document.getElementById('plz').value) }),
+      preConfirm: () => {
+        const lim = Number(document.getElementById('lim').value);
+        if (!(lim > 0)) { Swal.showValidationMessage('El límite de crédito debe ser mayor a cero'); return false; }
+        return { limite_credito: lim, plazo_dias: Number(document.getElementById('plz').value || 0) };
+      },
     });
     if (value) { try { await clientesApi.autorizarCredito(r._id, value); cargar(); Swal.fire('Listo', 'Crédito autorizado', 'success'); } catch (e) { Swal.fire('Error', e.message, 'error'); } }
   };
@@ -139,7 +147,7 @@ export default function ClientesPage() {
         <button className="btn-ghost text-xs" onClick={() => abrirEdit(r)}>Editar</button>
         <button className="btn-ghost text-xs" onClick={() => setEstadoCli(r)}>Estado de cuenta</button>
         <button className="btn-ghost text-xs" onClick={() => verMonedero(r)}>Monedero</button>
-        {puedeCredito && r.forma_pago !== 'Credito' && <button className="btn-ghost text-xs text-amber-600" onClick={() => autorizarCredito(r)}>Crédito</button>}
+        {puedeCredito && !r.es_publico_general && <button className="btn-ghost text-xs text-amber-600" onClick={() => autorizarCredito(r)}>Crédito</button>}
       </div>
     ) },
   ];
@@ -147,9 +155,9 @@ export default function ClientesPage() {
   const setDom = (k, v) => setForm((f) => ({ ...f, domicilio: { ...f.domicilio, [k]: v } }));
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="mx-auto max-w-7xl space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">Clientes</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Clientes</h1>
         <div className="flex items-center gap-2">
           {puedeCambiarPin && (
             <button className="btn-secondary flex items-center gap-1" onClick={abrirPin}>

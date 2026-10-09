@@ -53,6 +53,7 @@ return [
         'pass' => 'LA_CONTRASEÑA_DE_LA_BD',
     ],
     'jwt_secret'   => 'CADENA_ALEATORIA_DE_64+_CARACTERES',   // obligatoria
+    'migrar_clave' => 'OTRA_CADENA_LARGA',                    // para abrir api/migrar.php?clave=... al actualizar
     'login_domain' => 'levotek.com',
     'debug'        => false,
     'cors_origin'  => '',
@@ -88,14 +89,18 @@ Abre `https://TU-DOMINIO/api/install.php?go=1`.
 2. Arma el paquete otra vez (paso 1).
 3. Sube y reemplaza `public_html/` **sin tocar** `api/lib/config.local.php` ni `api/uploads/`.
    No subas `install.php` (no hace falta y solo funciona sobre una base vacía).
-4. Abre `https://TU-DOMINIO/api/migrar.php`: muestra qué cambios de base faltan. Pulsa **Aplicar ahora**
-   (`?go=1`). Solo agrega lo que falta y nunca borra datos; correrlo dos veces no hace daño.
+4. Abre `https://TU-DOMINIO/api/migrar.php?clave=TU_CLAVE` (la `migrar_clave` de `api/lib/config.local.php`, 16+
+   caracteres; si no la tienes, agrégala): muestra qué cambios de base faltan. Pulsa **Aplicar ahora**. Solo agrega
+   lo que falta y nunca borra datos; correrlo dos veces no hace daño.
 5. **Borra `public_html/api/migrar.php`.**
 
 Cambios de base por versión (los aplica `migrar.php`; una instalación nueva ya los trae):
 | Fecha | Cambio |
 |---|---|
 | 2026-10-06 | `empresas.aviso_pago`: aviso de pago pendiente que el superadmin pone a una tienda |
+| 2026-10-08 | `proveedor_movimientos.tipo_cambio`: tipo de cambio de pagos a proveedor en otra moneda |
+| 2026-10-08 | `devoluciones.destino_saldo` admite `mixto` (parte baja la deuda, parte va al monedero) |
+| 2026-10-09 | `empresas.color`: color de la tienda en la interfaz (rediseño «Mostrador») |
 
 ## Problemas comunes
 | Síntoma | Causa probable |

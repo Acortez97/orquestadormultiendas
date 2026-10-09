@@ -7,8 +7,10 @@ import ArticuloAutocomplete from '../../components/common/ArticuloAutocomplete';
 import MatrizColorTalla, { expandirMatriz, sumarMatriz } from '../../components/common/MatrizColorTalla';
 import { traspasosApi, almacenesApi, articulosApi } from '../../services/api/endpoints';
 import { useAuth } from '../../contexts/AuthContext';
+import { aFecha } from '../../utils/fechas';
+import { aviso } from '../../utils/avisos';
 
-const fecha = (d) => (d ? new Date(d).toLocaleDateString('es-MX') : '');
+const fecha = (d) => (d ? aFecha(d).toLocaleDateString('es-MX') : '');
 
 const estadoBadge = (estado) => {
   if (estado === 'aceptado') return 'badge-success';
@@ -214,7 +216,7 @@ export default function TraspasosPage() {
     if (!isConfirmed) return;
     try {
       await traspasosApi.aceptar(row._id);
-      Swal.fire({ icon: 'success', title: 'Traspaso aceptado', timer: 1600, showConfirmButton: false });
+      aviso('Traspaso aceptado');
       cargar();
     } catch (err) {
       Swal.fire('Error', err.message, 'error');
@@ -234,7 +236,7 @@ export default function TraspasosPage() {
     if (!isConfirmed) return;
     try {
       await traspasosApi.rechazar(row._id);
-      Swal.fire({ icon: 'success', title: 'Traspaso rechazado', timer: 1600, showConfirmButton: false });
+      aviso('Traspaso rechazado');
       cargar();
     } catch (err) {
       Swal.fire('Error', err.message, 'error');
@@ -287,12 +289,14 @@ export default function TraspasosPage() {
                   <CheckIcon className="w-4 h-4" /> Aceptar
                 </button>
               )}
-              <button
-                className="btn-danger flex items-center gap-1 px-2 py-1 text-xs"
-                onClick={() => rechazar(r)}
-              >
-                <XMarkIcon className="w-4 h-4" /> Rechazar
-              </button>
+              {hasPermiso('traspasos.aprobar') && (
+                <button
+                  className="btn-danger flex items-center gap-1 px-2 py-1 text-xs"
+                  onClick={() => rechazar(r)}
+                >
+                  <XMarkIcon className="w-4 h-4" /> Rechazar
+                </button>
+              )}
             </>
           )}
         </div>
@@ -301,9 +305,9 @@ export default function TraspasosPage() {
   ];
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="mx-auto max-w-7xl space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">Traspasos</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Traspasos</h1>
         <button className="btn-primary flex items-center gap-2" onClick={abrirForm}>
           <PlusIcon className="w-4 h-4" /> Nuevo traspaso
         </button>

@@ -17,6 +17,53 @@ class ReporteController
         return [$w, $a];
     }
 
+    /**
+     * Lineas NETAS de mercancia vendida: ventas (+), devoluciones (-) y cambios (devuelta -, nueva +).
+     * Cada renglon toma la fecha de SU documento; tienda y vendedor son los de la venta original.
+     * Lo devuelto se costea al costo con que se vendio; lo nuevo de un cambio, al costo actual.
+     * Columnas: id_articulo, codigo, descripcion, lista, cantidad, importe, costo, id_venta. Devuelve [sql, args].
+     */
+    private static function lineasNetas(int $emp, ?string $desde, ?string $hasta, ?int $idAlm, ?int $idVend): array
+    {
+        $f = function (string $fecha) use ($desde, $hasta, $idAlm, $idVend) {
+            $w = ''; $a = [];
+            if ($desde)  { $w .= " AND $fecha>=?";      $a[] = $desde; }
+            if ($hasta)  { $w .= " AND $fecha<=?";      $a[] = $hasta . ' 23:59:59'; }
+            if ($idAlm)  { $w .= ' AND v.id_almacen=?';  $a[] = $idAlm; }
+            if ($idVend) { $w .= ' AND v.id_vendedor=?'; $a[] = $idVend; }
+            return [$w, $a];
+        };
+        $costo = fn($col) => "(SELECT COALESCE(AVG(x.costo_unitario),0) FROM venta_lineas x WHERE x.id_empresa=v.id_empresa AND x.id_venta=v.id AND x.id_articulo=$col)";
+        $lista = fn($col) => "(SELECT MAX(x.lista_aplicada) FROM venta_lineas x WHERE x.id_empresa=v.id_empresa AND x.id_venta=v.id AND x.id_articulo=$col)";
+        [$w1, $a1] = $f('v.fecha'); [$w2, $a2] = $f('d.fecha'); [$w3, $a3] = $f('ca.fecha');
+        $sql = "SELECT vl.id_articulo, vl.codigo, vl.descripcion, vl.lista_aplicada lista, vl.cantidad, vl.importe,
+                       vl.cantidad*vl.costo_unitario costo, v.id id_venta
+                FROM venta_lineas vl JOIN ventas v ON v.id_empresa=vl.id_empresa AND v.id=vl.id_venta
+                WHERE v.id_empresa=? AND v.estado='completada' $w1
+                UNION ALL
+                SELECT dl.id_articulo, dl.codigo, dl.descripcion, {$lista('dl.id_articulo')}, -dl.cantidad, -dl.importe,
+                       -dl.cantidad*{$costo('dl.id_articulo')}, v.id
+                FROM devolucion_lineas dl JOIN devoluciones d ON d.id_empresa=dl.id_empresa AND d.id=dl.id_devolucion
+                JOIN ventas v ON v.id_empresa=d.id_empresa AND v.id=d.id_venta
+                WHERE d.id_empresa=? $w2
+                UNION ALL
+                SELECT cl.id_articulo, cl.codigo, cl.descripcion, IF(cl.rol='nueva', 'CAMBIO', {$lista('cl.id_articulo')}),
+                       IF(cl.rol='nueva', 1, -1)*cl.cantidad, IF(cl.rol='nueva', 1, -1)*cl.importe,
+                       IF(cl.rol='nueva', cl.cantidad*a.costo, -cl.cantidad*{$costo('cl.id_articulo')}), v.id
+                FROM cambio_lineas cl JOIN cambios ca ON ca.id_empresa=cl.id_empresa AND ca.id=cl.id_cambio
+                JOIN ventas v ON v.id_empresa=ca.id_empresa AND v.id=ca.id_venta
+                JOIN articulos a ON a.id_empresa=cl.id_empresa AND a.id=cl.id_articulo
+                WHERE ca.id_empresa=? $w3";
+        return [$sql, array_merge([$emp], $a1, [$emp], $a2, [$emp], $a3)];
+    }
+
+    /** lineasNetas con los filtros estandar del query string */
+    private static function lineasNetasGet(int $emp): array
+    {
+        return self::lineasNetas($emp, !empty($_GET['desde']) ? (string) $_GET['desde'] : null, !empty($_GET['hasta']) ? (string) $_GET['hasta'] : null,
+            !empty($_GET['id_almacen']) ? (int) $_GET['id_almacen'] : null, !empty($_GET['id_vendedor']) ? (int) $_GET['id_vendedor'] : null);
+    }
+
     // ============================== VENTAS ==============================
     public static function ventas(array $p, array $ctx): void
     {
@@ -52,7 +99,14 @@ class ReporteController
             ];
         }
         $tot['ticket_promedio'] = $tot['num_notas'] > 0 ? round($tot['total'] / $tot['num_notas'], 2) : 0.0;
-        foreach (['total', 'prendas', 'credito'] as $k) $tot[$k] = round($tot[$k], 2);
+        // devoluciones y cambios del periodo (sobre ventas de la tienda / vendedor filtrados): venta neta
+        $wd = str_replace('v.fecha', 'd.fecha', $wx); $wc = str_replace('v.fecha', 'ca.fecha', $wx);
+        $tot['devoluciones'] = (float) Db::one("SELECT COALESCE(SUM(d.total),0) s FROM devoluciones d JOIN ventas v ON v.id_empresa=d.id_empresa AND v.id=d.id_venta
+                                                WHERE d.id_empresa=? $wd", $args)['s'];
+        $tot['cambios'] = (float) Db::one("SELECT COALESCE(SUM(ca.diferencia),0) s FROM cambios ca JOIN ventas v ON v.id_empresa=ca.id_empresa AND v.id=ca.id_venta
+                                           WHERE ca.id_empresa=? $wc", $args)['s'];
+        $tot['neto'] = $tot['total'] - $tot['devoluciones'] + $tot['cambios'];
+        foreach (['total', 'prendas', 'credito', 'devoluciones', 'cambios', 'neto'] as $k) $tot[$k] = round($tot[$k], 2);
         foreach ($grp as &$g) { $g['total'] = round($g['total'], 2); $g['prendas'] = round($g['prendas'], 2); } unset($g);
 
         Http::ok(['totales' => $tot, 'agrupar' => $agrupar, 'agrupado' => array_values($grp), 'filas' => $filas]);
@@ -62,16 +116,13 @@ class ReporteController
     public static function utilidad(array $p, array $ctx): void
     {
         $emp = Tenant::id();
-        [$wx, $ax] = self::filtroVentas();
         $iva = self::ivaEmpresa($emp);
+        [$sql, $args] = self::lineasNetasGet($emp);   // ventas menos devoluciones, con cambios
         $rows = Db::all(
-            "SELECT vl.id_articulo, vl.codigo, vl.descripcion,
-                    SUM(vl.cantidad) cantidad, SUM(vl.importe) importe, SUM(vl.cantidad*vl.costo_unitario) costo
-             FROM venta_lineas vl JOIN ventas v ON v.id_empresa=vl.id_empresa AND v.id=vl.id_venta
-             WHERE v.id_empresa=? AND v.estado='completada' $wx
-             GROUP BY vl.id_articulo, vl.codigo, vl.descripcion
-             ORDER BY (SUM(vl.importe)/(1+$iva) - SUM(vl.cantidad*vl.costo_unitario)) DESC",
-            array_merge([$emp], $ax));
+            "SELECT n.id_articulo, n.codigo, n.descripcion, SUM(n.cantidad) cantidad, SUM(n.importe) importe, SUM(n.costo) costo
+             FROM ($sql) n GROUP BY n.id_articulo, n.codigo, n.descripcion
+             HAVING ABS(SUM(n.cantidad)) > 0.0001 OR ABS(SUM(n.importe)) > 0.005
+             ORDER BY (SUM(n.importe)/(1+$iva) - SUM(n.costo)) DESC", $args);
 
         $tot = ['ingreso' => 0.0, 'costo' => 0.0, 'utilidad' => 0.0, 'margen' => 0.0];
         $filas = [];
@@ -93,12 +144,11 @@ class ReporteController
     public static function porLista(array $p, array $ctx): void
     {
         $emp = Tenant::id();
-        [$wx, $ax] = self::filtroVentas();
+        [$sql, $args] = self::lineasNetasGet($emp);
         $rows = Db::all(
-            "SELECT vl.lista_aplicada lista, SUM(vl.cantidad) prendas, COUNT(*) num_lineas, SUM(vl.importe) importe
-             FROM venta_lineas vl JOIN ventas v ON v.id_empresa=vl.id_empresa AND v.id=vl.id_venta
-             WHERE v.id_empresa=? AND v.estado='completada' $wx
-             GROUP BY vl.lista_aplicada ORDER BY importe DESC", array_merge([$emp], $ax));
+            "SELECT n.lista, SUM(n.cantidad) prendas, SUM(n.cantidad > 0) num_lineas, SUM(n.importe) importe
+             FROM ($sql) n GROUP BY n.lista HAVING ABS(SUM(n.importe)) > 0.005 OR ABS(SUM(n.cantidad)) > 0.0001
+             ORDER BY importe DESC", $args);
         $totImporte = 0.0; $totPrendas = 0.0;
         foreach ($rows as $r) { $totImporte += (float) $r['importe']; $totPrendas += (float) $r['prendas']; }
         $filas = array_map(fn($r) => [
@@ -113,14 +163,13 @@ class ReporteController
     public static function topProductos(array $p, array $ctx): void
     {
         $emp = Tenant::id();
-        [$wx, $ax] = self::filtroVentas();
         $orden = ($_GET['orden'] ?? 'cantidad') === 'importe' ? 'importe' : 'cantidad';
         $limit = min(200, max(1, (int) ($_GET['limit'] ?? 20)));
+        [$sql, $args] = self::lineasNetasGet($emp);
         $rows = Db::all(
-            "SELECT vl.codigo, vl.descripcion, SUM(vl.cantidad) cantidad, SUM(vl.importe) importe, COUNT(DISTINCT vl.id_venta) num_ventas
-             FROM venta_lineas vl JOIN ventas v ON v.id_empresa=vl.id_empresa AND v.id=vl.id_venta
-             WHERE v.id_empresa=? AND v.estado='completada' $wx
-             GROUP BY vl.codigo, vl.descripcion ORDER BY $orden DESC LIMIT $limit", array_merge([$emp], $ax));
+            "SELECT n.codigo, n.descripcion, SUM(n.cantidad) cantidad, SUM(n.importe) importe, COUNT(DISTINCT n.id_venta) num_ventas
+             FROM ($sql) n GROUP BY n.codigo, n.descripcion HAVING SUM(n.cantidad) > 0.0001
+             ORDER BY $orden DESC LIMIT $limit", $args);
         Http::ok(['filas' => array_map(fn($r) => [
             'codigo' => $r['codigo'], 'descripcion' => $r['descripcion'], 'cantidad' => (float) $r['cantidad'],
             'importe' => round((float) $r['importe'], 2), 'num_ventas' => (int) $r['num_ventas'],
@@ -138,11 +187,12 @@ class ReporteController
         $agrupar = ($_GET['agrupar'] ?? 'dia') === 'tienda' ? 'tienda' : 'dia';
 
         $ventas = Db::all(
-            "SELECT v.id, v.fecha, v.monto_credito, v.cambio_efectivo, al.nombre tienda
+            "SELECT v.id, v.fecha, v.total, v.monto_credito, v.cambio_efectivo, al.nombre tienda
              FROM ventas v JOIN almacenes al ON al.id_empresa=v.id_empresa AND al.id=v.id_almacen
              WHERE v.id_empresa=? AND v.estado='completada' $wx", array_merge([$emp], $ax));
 
-        $formasKeys = ['efectivo', 'tdc', 'tdb', 'transferencia', 'monedero'];
+        // mismas formas que el corte del dia; 'anticipo' = parte de una liquidacion que ya se cobro otro dia
+        $formasKeys = ['efectivo', 'tdc', 'tdb', 'transferencia', 'cheque', 'monedero', 'anticipo'];
         $extra = ['credito' => 0.0, 'cambio_efectivo' => 0.0, 'efectivo_neto' => 0.0];
         $tot = array_merge(['total' => 0.0, 'num_notas' => 0], $extra, array_fill_keys($formasKeys, 0.0));
         $grp = [];
@@ -152,10 +202,10 @@ class ReporteController
             $grp[$clave]['num_notas']++; $tot['num_notas']++;
             $grp[$clave]['credito'] += (float) $v['monto_credito']; $tot['credito'] += (float) $v['monto_credito'];
             $grp[$clave]['cambio_efectivo'] += (float) $v['cambio_efectivo']; $tot['cambio_efectivo'] += (float) $v['cambio_efectivo'];
+            $grp[$clave]['total'] += (float) $v['total']; $tot['total'] += (float) $v['total'];   // total vendido = total de las notas
             foreach (Db::all('SELECT forma, importe FROM venta_pagos WHERE id_empresa=? AND id_venta=?', [$emp, $v['id']]) as $pg) {
-                $f = in_array($pg['forma'], $formasKeys, true) ? $pg['forma'] : 'efectivo';
-                $grp[$clave][$f] += (float) $pg['importe']; $tot[$f] += (float) $pg['importe'];
-                $grp[$clave]['total'] += (float) $pg['importe']; $tot['total'] += (float) $pg['importe'];
+                if (!in_array($pg['forma'], $formasKeys, true)) continue;
+                $grp[$clave][$pg['forma']] += (float) $pg['importe']; $tot[$pg['forma']] += (float) $pg['importe'];
             }
         }
         // efectivo neto = efectivo recibido - cambio entregado en efectivo
@@ -221,7 +271,7 @@ class ReporteController
         if (!empty($_GET['id_vendedor'])) { $wx .= ' AND co.id_empleado=?'; $ax[] = (int) $_GET['id_vendedor']; }
         $rows = Db::all(
             "SELECT TRIM(CONCAT(COALESCE(e.nombre,''),' ',COALESCE(e.apellido,''))) vendedor,
-                    COUNT(*) num_ventas, SUM(co.base) base, SUM(co.importe) importe,
+                    COUNT(DISTINCT co.id_venta) num_ventas, SUM(co.base) base, SUM(co.importe) importe,
                     SUM(CASE WHEN co.pagada='Si' THEN co.importe ELSE 0 END) pagado,
                     SUM(CASE WHEN co.pagada='No' THEN co.importe ELSE 0 END) pendiente
              FROM comisiones co JOIN empleados e ON e.id_empresa=co.id_empresa AND e.id=co.id_empleado
@@ -311,14 +361,16 @@ class ReporteController
                     (SELECT COALESCE(SUM(cl.cantidad),0) FROM compra_lineas cl WHERE cl.id_empresa=c.id_empresa AND cl.id_compra=c.id) piezas
              FROM compras c JOIN proveedores pr ON pr.id_empresa=c.id_empresa AND pr.id=c.id_proveedor JOIN almacenes al ON al.id_empresa=c.id_empresa AND al.id=c.id_almacen
              WHERE c.id_empresa=? $wx ORDER BY c.fecha DESC, c.id DESC", array_merge([$emp], $ax));
-        $tot = ['total' => 0.0, 'num_compras' => 0, 'piezas' => 0.0];
+        // el total solo suma compras vigentes (aprobadas y por aprobar); las canceladas se listan pero no suman
+        $tot = ['total' => 0.0, 'num_compras' => 0, 'piezas' => 0.0, 'aprobadas' => 0.0, 'por_aprobar' => 0.0, 'canceladas' => 0.0];
         $filas = [];
         foreach ($rows as $r) {
-            $tot['total'] += (float) $r['total']; $tot['num_compras']++; $tot['piezas'] += (float) $r['piezas'];
+            $tot[$r['estado'] === 'aprobada' ? 'aprobadas' : ($r['estado'] === 'cancelada' ? 'canceladas' : 'por_aprobar')] += (float) $r['total'];
+            if ($r['estado'] !== 'cancelada') { $tot['total'] += (float) $r['total']; $tot['num_compras']++; $tot['piezas'] += (float) $r['piezas']; }
             $filas[] = ['folio' => $r['folio'], 'fecha' => $r['fecha'], 'proveedor' => $r['proveedor'], 'almacen' => $r['almacen'],
                         'piezas' => (float) $r['piezas'], 'estado' => $r['estado'], 'total' => (float) $r['total']];
         }
-        $tot['total'] = round($tot['total'], 2); $tot['piezas'] = round($tot['piezas'], 2);
+        foreach (['total', 'piezas', 'aprobadas', 'por_aprobar', 'canceladas'] as $k) $tot[$k] = round($tot[$k], 2);
         Http::ok(['totales' => $tot, 'filas' => $filas]);
     }
 
@@ -389,13 +441,10 @@ class ReporteController
         $diasCad = max(1, (int) ($_GET['dias_caducar'] ?? 30));
 
         // ---- Ventas por artículo en el periodo ----
-        $wv = 'v.id_empresa=? AND v.estado=\'completada\' AND v.fecha>=? AND v.fecha<=?';
-        $av = [$emp, $desde, $hasta . ' 23:59:59'];
-        if ($idAlm) { $wv .= ' AND v.id_almacen=?'; $av[] = $idAlm; }
+        [$sql, $args] = self::lineasNetas($emp, $desde, $hasta, $idAlm, null);   // netas de devoluciones y cambios
         $ventasRows = Db::all(
-            "SELECT vl.id_articulo, vl.codigo, vl.descripcion, SUM(vl.cantidad) cantidad, SUM(vl.importe) importe
-             FROM venta_lineas vl JOIN ventas v ON v.id_empresa=vl.id_empresa AND v.id=vl.id_venta
-             WHERE $wv GROUP BY vl.id_articulo, vl.codigo, vl.descripcion", $av);
+            "SELECT n.id_articulo, n.codigo, n.descripcion, SUM(n.cantidad) cantidad, SUM(n.importe) importe
+             FROM ($sql) n GROUP BY n.id_articulo, n.codigo, n.descripcion HAVING SUM(n.cantidad) > 0.0001", $args);
 
         $ventasPorArt = []; $unidadesTot = 0.0; $importeTot = 0.0; $conVentas = [];
         foreach ($ventasRows as $r) {
@@ -467,7 +516,7 @@ class ReporteController
                 'sin_ventas'        => $sinVentasCount,
                 'unidades_vendidas' => round($unidadesTot, 2),
                 'importe_vendido'   => round($importeTot, 2),
-                'valor_inventario'  => round($valorInv, 2),
+                'valor_inventario'  => Permisos::$verCostos ? round($valorInv, 2) : null,
                 'promedio_unidades' => $promedio,
                 'agotados'          => count($agotados),
                 'bajos'             => count($bajos),

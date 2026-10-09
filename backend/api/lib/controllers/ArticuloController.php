@@ -88,7 +88,7 @@ class ArticuloController
             'id_corte'     => self::ref('cortes_catalogo', $a['id_corte']),
             'id_marca'     => self::ref('marcas', $a['id_marca']),
             'fotos'        => self::fotosDe((int) $a['id']),
-            'costo'        => (float) $a['costo'],
+            'costo'        => Permisos::$verCostos ? (float) $a['costo'] : null,
             'precios'      => [
                 'lista1' => (float) $a['lista1'], 'lista2' => (float) $a['lista2'], 'lista3' => (float) $a['lista3'],
                 'lista4' => (float) $a['lista4'], 'lista5' => (float) $a['lista5'],
@@ -253,9 +253,32 @@ class ArticuloController
             if (!$cid) continue;
             if ($cid === $idKit) throw new ApiError('Un kit no puede contenerse a si mismo', 400, 'VALIDATION');
             if ($cant <= 0) throw new ApiError('La cantidad de cada componente debe ser mayor a cero', 400, 'VALIDATION');
+            // el kit mueve sus componentes "sin variante": no se aceptan kits dentro de kits ni articulos con variantes
+            $comp = Db::one('SELECT codigo, es_kit FROM articulos WHERE id = ? AND id_empresa = ?', [$cid, $emp]);
+            if ((int) $comp['es_kit']) throw new ApiError("El componente {$comp['codigo']} es un kit; un kit no puede contener otro kit", 400, 'VALIDATION');
+            if (Db::one('SELECT 1 FROM articulo_eje_valores WHERE id_empresa = ? AND id_articulo = ? LIMIT 1', [$emp, $cid]))
+                throw new ApiError("El componente {$comp['codigo']} tiene variantes (color/talla); un kit solo puede llevar articulos sin variantes", 400, 'VALIDATION');
             Db::run('INSERT INTO articulo_componentes (id_empresa, id_kit, id_componente, cantidad) VALUES (?,?,?,?)
                      ON DUPLICATE KEY UPDATE cantidad = cantidad + VALUES(cantidad)', [$emp, $idKit, $cid, $cant]);
         }
+    }
+
+    /** Componentes actuales de un kit como [id_componente => cantidad] */
+    private static function mapaComponentes(int $idKit): array
+    {
+        $m = [];
+        foreach (Db::all('SELECT id_componente, cantidad FROM articulo_componentes WHERE id_empresa = ? AND id_kit = ?', [Tenant::id(), $idKit]) as $r)
+            $m[(int) $r['id_componente']] = round((float) $r['cantidad'], 2);
+        ksort($m);
+        return $m;
+    }
+
+    /** El articulo ya se vendio (en ventas o como prenda nueva de un cambio) */
+    private static function tieneVentas(int $idArt): bool
+    {
+        $emp = Tenant::id();
+        return (bool) Db::one("SELECT 1 FROM venta_lineas WHERE id_empresa = ? AND id_articulo = ? LIMIT 1", [$emp, $idArt])
+            || (bool) Db::one("SELECT 1 FROM cambio_lineas WHERE id_empresa = ? AND id_articulo = ? AND rol = 'nueva' LIMIT 1", [$emp, $idArt]);
     }
 
     /** Sincroniza fotos: solo acepta archivos que existan en la carpeta de ESTA tienda */
@@ -342,7 +365,11 @@ class ArticuloController
              num($pr['lista4'] ?? 0), num($pr['lista5'] ?? 0), !empty($b['es_oferta']) ? 1 : 0, num($b['precio_oferta'] ?? 0),
              max(1, (int) ($b['piezas_por_caja'] ?? 1))]);
         self::setVariantes($id, $refs['id_categoria'], $b['colores'] ?? [], $b['tallas'] ?? []);
-        if (!empty($b['es_kit'])) self::setComponentes($id, $b['componentes'] ?? []);
+        if (!empty($b['es_kit'])) {
+            if (Db::one('SELECT 1 FROM articulo_eje_valores WHERE id_empresa = ? AND id_articulo = ? LIMIT 1', [$emp, $id]))
+                throw new ApiError('Un kit no puede tener variantes (color/talla)', 400, 'VALIDATION');
+            self::setComponentes($id, $b['componentes'] ?? []);
+        }
         if (array_key_exists('fotos', $b)) self::syncFotos($id, $b['fotos']);
         Db::commit();
         Http::created(self::fmt(self::articulo($id), true), 'Articulo');
@@ -391,8 +418,19 @@ class ArticuloController
                 array_key_exists('tallas', $b) ? $b['tallas'] : array_column(self::tallasDe($id), '_id'));
         }
         $esKit = array_key_exists('es_kit', $b) ? !empty($b['es_kit']) : !empty($a['es_kit']);
+        $antes = self::mapaComponentes($id);
         if (array_key_exists('componentes', $b)) self::setComponentes($id, $esKit ? $b['componentes'] : []);
         elseif (!$esKit) Db::run('DELETE FROM articulo_componentes WHERE id_empresa = ? AND id_kit = ?', [$emp, $id]);
+        // D5: un kit ya vendido no cambia de composicion (cancelaciones y devoluciones reponen lo que lleva el kit)
+        if (($esKit !== !empty($a['es_kit']) || self::mapaComponentes($id) != $antes) && self::tieneVentas($id))
+            throw new ApiError('Este articulo ya se vendio: no se puede cambiar si es kit ni lo que contiene. Crea un kit nuevo', 400, 'VALIDATION');
+        if ($esKit && Db::one('SELECT 1 FROM articulo_componentes WHERE id_empresa = ? AND id_componente = ? LIMIT 1', [$emp, $id]))
+            throw new ApiError('Este articulo es componente de otro kit; no puede ser kit', 400, 'VALIDATION');
+        if ($esKit && Db::one('SELECT 1 FROM articulo_eje_valores WHERE id_empresa = ? AND id_articulo = ? LIMIT 1', [$emp, $id]))
+            throw new ApiError('Un kit no puede tener variantes (color/talla)', 400, 'VALIDATION');
+        if (Db::one('SELECT 1 FROM articulo_eje_valores WHERE id_empresa = ? AND id_articulo = ? LIMIT 1', [$emp, $id])
+            && Db::one('SELECT 1 FROM articulo_componentes WHERE id_empresa = ? AND id_componente = ? LIMIT 1', [$emp, $id]))
+            throw new ApiError('Este articulo es componente de un kit; no puede tener variantes', 400, 'VALIDATION');
         if (array_key_exists('fotos', $b)) self::syncFotos($id, $b['fotos']);
         Db::commit();
         Http::updated(self::fmt(self::articulo($id), true), 'Articulo');

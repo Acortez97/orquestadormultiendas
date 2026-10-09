@@ -48,10 +48,10 @@ export default function ProductosDashboardPage() {
   const setF = (k, v) => setFiltros((f) => ({ ...f, [k]: v }));
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="mx-auto max-w-7xl space-y-4">
       <div className="flex items-center gap-2">
         <Squares2X2Icon className="w-6 h-6 text-primary-600" />
-        <h1 className="text-2xl font-bold text-slate-800">Dashboard de productos</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Análisis de productos</h1>
         {loading && <ArrowPathIcon className="w-5 h-5 text-slate-400 animate-spin ml-1" />}
       </div>
 

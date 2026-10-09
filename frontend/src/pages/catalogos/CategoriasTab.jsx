@@ -4,6 +4,7 @@ import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 import DataTable from '../../components/common/DataTable';
 import Modal from '../../components/common/Modal';
 import { categoriasApi, atributosApi } from '../../services/api/endpoints';
+import { aviso } from '../../utils/avisos';
 
 const TIPOS_FICHA = [['texto', 'Texto'], ['numero', 'Número'], ['fecha', 'Fecha'], ['booleano', 'Sí/No']];
 const vacio = { nombre: '', prefijo_sku: '', id_atributo_eje1: '', id_atributo_eje2: '', ficha_schema: [] };
@@ -48,7 +49,7 @@ export default function CategoriasTab() {
       };
       if (editId) await categoriasApi.actualizar(editId, payload); else await categoriasApi.crear(payload);
       setOpen(false); cargar();
-      Swal.fire({ icon: 'success', title: 'Guardado', timer: 1000, showConfirmButton: false });
+      aviso('Guardado');
     } catch (e) { Swal.fire('Error', e.message, 'error'); }
   };
   const eliminar = async (r) => {

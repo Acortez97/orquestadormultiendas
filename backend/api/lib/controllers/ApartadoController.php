@@ -98,7 +98,14 @@ class ApartadoController
         $where = 'a.id_empresa = ?'; $args = [$emp];
         if (!empty($_GET['id_cliente']))  { $where .= ' AND a.id_cliente = ?';  $args[] = (int) $_GET['id_cliente']; }
         if (!empty($_GET['id_vendedor'])) { $where .= ' AND a.id_vendedor = ?'; $args[] = (int) $_GET['id_vendedor']; }
-        if (!empty($_GET['estado']))      { $where .= ' AND a.estado = ?';      $args[] = $_GET['estado']; }
+        // 'vencido' no se guarda: es vigente / con anticipo con la fecha limite ya pasada
+        $estado = (string) ($_GET['estado'] ?? '');
+        if ($estado === 'vencido') {
+            $where .= " AND a.estado IN ('vigente','con_anticipo') AND a.fecha_limite < CURDATE()";
+        } elseif ($estado !== '') {
+            $where .= ' AND a.estado = ?'; $args[] = $estado;
+            if (in_array($estado, ['vigente', 'con_anticipo'], true)) $where .= ' AND (a.fecha_limite IS NULL OR a.fecha_limite >= CURDATE())';
+        }
         if (!empty($_GET['desde']))       { $where .= ' AND a.fecha >= ?';      $args[] = $_GET['desde']; }
         if (!empty($_GET['hasta']))       { $where .= ' AND a.fecha <= ?';      $args[] = $_GET['hasta'] . ' 23:59:59'; }
         $rows = Db::all("SELECT a.id FROM apartados a WHERE $where ORDER BY a.fecha DESC, a.id DESC LIMIT 500", $args);
@@ -190,11 +197,13 @@ class ApartadoController
         try {
             $a = self::bloquear($id, ['vigente', 'con_anticipo'], 'El apartado no se puede liquidar');
             $restante = round((float) $a['total'] - (float) $a['anticipo'], 2);
-            if ($pagado + 0.01 < $restante) throw new ApiError("El pago ($pagado) no cubre el restante ($restante)", 400, 'VALIDATION');
+            if ($pagado + 0.001 < $restante) throw new ApiError("El pago ($pagado) no cubre el restante ($restante)", 400, 'VALIDATION');
 
+            $filas = Db::all('SELECT * FROM apartado_lineas WHERE id_empresa = ? AND id_apartado = ? ORDER BY id', [$emp, $id]);
             $lineasVenta = array_map(fn($l) => [
                 'id_articulo' => (int) $l['id_articulo'], 'id_color' => $l['id_valor1'], 'id_talla' => $l['id_valor2'], 'cantidad' => (float) $l['cantidad'],
-            ], Db::all('SELECT * FROM apartado_lineas WHERE id_empresa = ? AND id_apartado = ?', [$emp, $id]));
+            ], $filas);
+            $preciosPactados = array_map(fn($l) => (float) $l['precio_unitario'], $filas);   // se respeta el precio con que se aparto
             $pagosVenta = [];
             if ((float) $a['anticipo'] > 0) $pagosVenta[] = ['forma' => 'anticipo', 'importe' => (float) $a['anticipo']];
             foreach ($pagos as $pg) {
@@ -212,14 +221,13 @@ class ApartadoController
                 'a_credito'   => false,
                 'destino_cambio' => ($b['destino_cambio'] ?? 'monedero'),
                 'notas'       => 'Liquidacion apartado ' . $a['folio'],
-            ], $ctx, true, ['anticipo']);
+            ], $ctx, true, ['anticipo'], $preciosPactados);
             Db::run("UPDATE apartados SET estado = 'liquidado', id_venta = ? WHERE id = ? AND id_empresa = ?", [$ventaId, $id, $emp]);
             Db::commit();
         } catch (Throwable $e) { Db::rollback(); throw $e; }
 
         Ledger::audit($ctx, 'liquidar', 'Apartado', $id, 'Liquidacion ' . $a['folio']);
         $out = self::obtenerApartado($emp, $id);
-        $out['generatedVentaId'] = $ventaId;
         Http::ok($out, 'Apartado liquidado y venta generada');
     }
 

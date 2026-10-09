@@ -64,6 +64,12 @@ class AlmacenController
         if ($codigo === '') throw new ApiError('El codigo es obligatorio', 400, 'VALIDATION');
         if ($codigo !== $r['codigo'] && Db::one('SELECT id FROM almacenes WHERE id_empresa = ? AND codigo = ? AND id <> ?', [Tenant::id(), $codigo, $r['id']]))
             throw new ApiError('Ya existe un almacen con ese codigo', 409, 'CONFLICT');
+        // reactivar cuenta contra el limite de almacenes de la plataforma
+        if (($b['is_active'] ?? null) === 'Si' && $r['is_active'] !== 'Si') {
+            $max = Tenant::empresa()['max_almacenes'];
+            if ($max !== null && (int) Db::one("SELECT COUNT(*) n FROM almacenes WHERE id_empresa = ? AND is_active = 'Si'", [Tenant::id()])['n'] >= (int) $max)
+                throw new ApiError('La tienda alcanzo su limite de almacenes', 400, 'LIMITE');
+        }
         Db::run(
             'UPDATE almacenes SET codigo = ?, nombre = ?, tipo = ?, vende_publico = ?, serie_folio = ?, direccion = ?, telefono = ?, is_active = ?
              WHERE id = ? AND id_empresa = ?',

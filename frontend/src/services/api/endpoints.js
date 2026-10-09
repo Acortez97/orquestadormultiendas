@@ -232,6 +232,20 @@ export const configApi = {
   // PIN de autorización para Lista de precios 4/5
   estadoPinListaAlta: () => get('/config-sistema/pin-lista-alta'),
   cambiarPinListaAlta: (pin) => put('/config-sistema/pin-lista-alta', { pin }),
+  // Color de la tienda en la interfaz ('' = el predeterminado)
+  cambiarColor: (color) => put('/config-sistema/color', { color }),
+};
+
+// ---- Carga masiva (aplicar=false revisa sin guardar) ----
+export const importarApi = {
+  articulos: (body) => post('/importar/articulos', body),
+  existencias: (body) => post('/importar/existencias', body),
+};
+
+// ---- Inicio de la tienda: resumen del dia y pendientes ----
+export const tiendaApi = {
+  hoy: (params) => get('/tienda/hoy', params),
+  pendientes: () => get('/tienda/pendientes'),
 };
 
 // ---- Usuarios de la tienda (solo admin de tienda) ----

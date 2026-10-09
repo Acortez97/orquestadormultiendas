@@ -1,3 +1,4 @@
+import { aFecha } from './fechas';
 /**
  * Impresión / exportación a PDF del Corte de Caja.
  *
@@ -13,7 +14,7 @@
 const money = (n) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
 
-const fechaCorta = (d) => (d ? new Date(d).toLocaleDateString('es-MX') : '');
+const fechaCorta = (d) => (d ? aFecha(d).toLocaleDateString('es-MX') : '');
 const fechaHora = () => new Date().toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
 
 const esc = (s) =>

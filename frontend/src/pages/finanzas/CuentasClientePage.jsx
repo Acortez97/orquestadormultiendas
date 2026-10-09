@@ -40,8 +40,8 @@ export default function CuentasClientePage() {
   ];
 
   return (
-    <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-bold text-slate-800">Cuentas por cobrar (clientes)</h1>
+    <div className="mx-auto max-w-7xl space-y-4">
+      <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Cuentas por cobrar</h1>
       <p className="text-sm text-slate-500">Haz clic en un cliente para ver su estado de cuenta y registrar un abono.</p>
       <DataTable
         columns={columns}

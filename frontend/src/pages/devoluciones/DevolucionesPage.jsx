@@ -8,6 +8,8 @@ import { devolucionesApi, ventasApi, clientesApi } from '../../services/api/endp
 import { useAuth } from '../../contexts/AuthContext';
 import { printTicket } from '../../utils/ticket';
 import DestinoPago, { FORMAS_COBRO, faltaDestino, destinoPayload } from '../../components/common/DestinoPago';
+import { haceDias, aFecha } from '../../utils/fechas';
+import { aviso } from '../../utils/avisos';
 
 // Nombre del usuario logueado para el campo "Vendedor" del ticket.
 const nombreUsuario = (u) => [u?.nombre, u?.apellido].filter(Boolean).join(' ') || u?.email || '';
@@ -22,7 +24,7 @@ async function saldosCliente(idCliente) {
 }
 
 const money = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n || 0);
-const fecha = (d) => (d ? new Date(d).toLocaleDateString('es-MX') : '');
+const fecha = (d) => (d ? aFecha(d).toLocaleDateString('es-MX') : '');
 const idOf = (v) => v?._id || v || '';
 
 // Plazo máximo para aceptar una devolución respecto a la fecha de la venta.
@@ -31,8 +33,8 @@ const DIAS_LIMITE_DEVOLUCION = 30;
 export default function DevolucionesPage() {
   const [tab, setTab] = useState('devoluciones');
   return (
-    <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-bold text-slate-800">Devoluciones y Cambios</h1>
+    <div className="mx-auto max-w-7xl space-y-4">
+      <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Devoluciones y cambios</h1>
       <div className="flex gap-2 border-b border-slate-200">
         {[['devoluciones', 'Devoluciones'], ['cambios', 'Cambios']].map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)}
@@ -64,7 +66,7 @@ function BuscarTicket({ onFound, label = 'Folio del ticket original…', maxDias
     if (!maxDias) return true;
     const f = v?.fecha || v?.createdAt;
     if (!f) return true;
-    const dias = (Date.now() - new Date(f).getTime()) / 86400000;
+    const dias = (Date.now() - aFecha(f).getTime()) / 86400000;
     return dias <= maxDias;
   };
 
@@ -150,8 +152,12 @@ function BuscarTicket({ onFound, label = 'Folio del ticket original…', maxDias
 }
 
 /* ---------------- Tab Devoluciones ---------------- */
+// Lo que aun se puede devolver de una linea del ticket (vendido - ya devuelto o cambiado)
+const pendiente = (l) => Math.max(0, Number(l.cantidad || 0) - Number(l.devuelto || 0));
+
 function TabDevoluciones() {
-  const { user } = useAuth();
+  const { user, hasPermiso } = useAuth();
+  const puedeCrear = hasPermiso('devoluciones.crear');
   const [venta, setVenta] = useState(null);
   const [sel, setSel] = useState({});
   const [saving, setSaving] = useState(false);
@@ -166,7 +172,7 @@ function TabDevoluciones() {
       if (filtroCliente) {
         // Al seleccionar cliente: solo sus devoluciones y dentro del lapso de 30 días.
         params.id_cliente = filtroCliente;
-        params.desde = new Date(Date.now() - DIAS_LIMITE_DEVOLUCION * 86400000).toISOString();
+        params.desde = haceDias(DIAS_LIMITE_DEVOLUCION);
       }
       const res = await devolucionesApi.listar(params);
       setRows(res.data || []);
@@ -190,7 +196,7 @@ function TabDevoluciones() {
       const res = await devolucionesApi.crear({ folio_venta: venta.folio, lineas: out });
       await imprimirTicket(res.data);
       setVenta(null); setSel({}); cargar();
-      Swal.fire({ icon: 'success', title: 'Devolución registrada', timer: 1600, showConfirmButton: false });
+      aviso('Devolución registrada');
     } catch (e) { Swal.fire('Error', e.message, 'error'); }
     finally { setSaving(false); }
   }
@@ -205,7 +211,7 @@ function TabDevoluciones() {
         detalle: `${l.id_color?.nombre || '—'}/${l.id_talla?.nombre || '—'} · ${money(l.precio_unitario)}`,
         importe: cant * Number(l.precio_unitario || 0),
       }));
-    const destino = dev?.destino_saldo === 'cxc' ? 'cuenta por cobrar (CxC)' : 'monedero';
+    const destino = { cxc: 'cuenta por cobrar (CxC)', mixto: 'la cuenta por cobrar (CxC) y el resto al monedero' }[dev?.destino_saldo] || 'monedero';
     const { saldoMonedero, saldoCredito } = await saldosCliente(idOf(venta.id_cliente));
     printTicket({
       tipo: 'DEVOLUCIÓN',
@@ -227,7 +233,7 @@ function TabDevoluciones() {
     { key: 'fecha', label: 'Fecha', render: (r) => fecha(r.fecha || r.createdAt) },
     { key: 'folio_venta', label: 'Venta origen' },
     { key: 'total', label: 'Total', render: (r) => money(r.total) },
-    { key: 'destino_saldo', label: 'Destino', render: (r) => <span className={r.destino_saldo === 'cxc' ? 'badge-warning' : 'badge-primary'}>{r.destino_saldo === 'cxc' ? 'CxC' : 'Monedero'}</span> },
+    { key: 'destino_saldo', label: 'Destino', render: (r) => <span className={r.destino_saldo === 'monedero' ? 'badge-primary' : 'badge-warning'}>{{ cxc: 'CxC', mixto: 'CxC + monedero' }[r.destino_saldo] || 'Monedero'}</span> },
   ];
 
   return (
@@ -244,7 +250,7 @@ function TabDevoluciones() {
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm divide-y divide-slate-200">
                 <thead className="bg-slate-50"><tr>
-                  {['Artículo', 'Variante', 'Vendido', 'P. Unit.', 'Devolver'].map((h) => <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase">{h}</th>)}
+                  {['Artículo', 'Variante', 'Vendido', 'Ya devuelto', 'P. Unit.', 'Devolver'].map((h) => <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase">{h}</th>)}
                 </tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {lineas.map((l, i) => (
@@ -252,10 +258,11 @@ function TabDevoluciones() {
                       <td className="px-3 py-2 text-slate-700">{l.codigo} — {l.id_articulo?.descripcion || l.descripcion || '—'}</td>
                       <td className="px-3 py-2 text-slate-600">{[l.id_color?.nombre, l.id_talla?.nombre].filter(Boolean).join(' / ') || '—'}</td>
                       <td className="px-3 py-2 text-slate-600">{l.cantidad}</td>
+                      <td className="px-3 py-2 text-slate-600">{Number(l.devuelto || 0) || '—'}</td>
                       <td className="px-3 py-2 text-slate-600">{money(l.precio_unitario)}</td>
                       <td className="px-3 py-2">
-                        <input type="number" min="0" max={l.cantidad} className="input-base w-24" value={sel[i] || ''}
-                          onChange={(e) => setSel((s) => ({ ...s, [i]: Math.min(Number(e.target.value || 0), l.cantidad) }))} />
+                        <input type="number" min="0" max={pendiente(l)} disabled={!puedeCrear || pendiente(l) <= 0} className="input-base w-24" value={sel[i] || ''}
+                          onChange={(e) => setSel((s) => ({ ...s, [i]: Math.max(0, Math.min(Number(e.target.value || 0), pendiente(l))) }))} />
                       </td>
                     </tr>
                   ))}
@@ -264,7 +271,7 @@ function TabDevoluciones() {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-slate-800">Total a devolver: {money(totalDevolver)}</span>
-              <button onClick={submit} disabled={saving} className="btn-primary">{saving ? 'Registrando…' : 'Registrar devolución'}</button>
+              {puedeCrear && <button onClick={submit} disabled={saving} className="btn-primary">{saving ? 'Registrando…' : 'Registrar devolución'}</button>}
             </div>
           </div>
         )}
@@ -282,7 +289,9 @@ function TabDevoluciones() {
 
 /* ---------------- Tab Cambios ---------------- */
 function TabCambios() {
-  const { user } = useAuth();
+  const { user, hasPermiso } = useAuth();
+  const puedeCrear = hasPermiso('devoluciones.crear');
+  const [cot, setCot] = useState(null);         // cotizacion del SERVIDOR de las prendas nuevas
   const [venta, setVenta] = useState(null);
   const [sel, setSel] = useState({});          // líneas devueltas del ticket: index -> cantidad
   const [nuevas, setNuevas] = useState([]);     // líneas nuevas (autocomplete)
@@ -302,31 +311,29 @@ function TabCambios() {
 
   const lineasTicket = venta?.lineas || [];
   const totalDevuelto = lineasTicket.reduce((s, l, i) => s + Number(sel[i] || 0) * Number(l.precio_unitario || 0), 0);
-  const totalNuevo = nuevas.reduce((s, l) => s + Number(l.cantidad || 0) * Number(l.precio_unitario || 0), 0);
-  const diferencia = totalNuevo - totalDevuelto;
+  const nuevasValidas = nuevas.filter((l) => l.id_articulo && Number(l.cantidad) > 0);
 
-  // Precio de la prenda nueva en un cambio: el MENOR (mayor descuento) entre la
-  // lista del cliente y las listas aplicadas en la venta original (su lista de
-  // cliente y su nivel por cantidad). No se recalcula por la cantidad del cambio,
-  // para que cambiar 1 pieza (p. ej. sólo talla) conserve el precio de volumen.
-  // Las ofertas ignoran las listas y usan precio_oferta.
-  const precioParaCliente = (art) => {
-    if (art.es_oferta) return Number(art.precio_oferta) || 0;
-    const niveles = [...new Set([
-      Number(venta?.id_cliente?.lista_precios),
-      Number(venta?.lista_cliente),
-      Number(venta?.nivel_cantidad),
-    ])].filter((n) => n >= 1 && n <= 5);
-    const precios = niveles.map((n) => Number(art.precios?.[`lista${n}`] || 0)).filter((p) => p > 0);
-    return precios.length ? Math.min(...precios) : Number(art.precios?.lista1 || 0);
-  };
+  // Las prendas nuevas las cotiza el servidor (mismo motor que al registrar el cambio): lo que se ve es lo que se cobra
+  useEffect(() => {
+    if (!venta || nuevasValidas.length === 0) { setCot(null); return undefined; }
+    let vigente = true;
+    ventasApi.cotizar({
+      id_cliente: idOf(venta.id_cliente) || undefined,
+      lineas: nuevasValidas.map((l) => ({ id_articulo: l.id_articulo, id_color: l.id_color || undefined, id_talla: l.id_talla || undefined, cantidad: Number(l.cantidad) })),
+    }).then((r) => { if (vigente) setCot(r.data); }).catch(() => { if (vigente) setCot(null); });
+    return () => { vigente = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [venta, nuevas]);
+  const precioNueva = (i) => cot?.lineas?.[nuevasValidas.indexOf(nuevas[i])]?.precio_unitario;
+  const totalNuevo = cot ? Number(cot.total) : 0;
+  const diferencia = Math.round((totalNuevo - totalDevuelto) * 100) / 100;
 
   const agregarNueva = (art) => {
     setNuevas((ns) => [...ns, {
       art,
       id_articulo: art._id, codigo: art.codigo, descripcion: art.descripcion,
       id_color: art.colores?.[0]?._id || '', id_talla: art.tallas?.[0]?._id || '',
-      cantidad: 1, precio_unitario: precioParaCliente(art),
+      cantidad: 1,
     }]);
   };
   const updNueva = (i, patch) => setNuevas((ns) => ns.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
@@ -337,12 +344,12 @@ function TabCambios() {
       id_articulo: idOf(l.id_articulo), id_color: idOf(l.id_color), id_talla: idOf(l.id_talla),
       cantidad: cant, precio_unitario: Number(l.precio_unitario), importe: cant * Number(l.precio_unitario || 0),
     }));
-    const lineas_nuevas = nuevas.filter((l) => l.id_articulo && Number(l.cantidad) > 0).map((l) => ({
-      id_articulo: l.id_articulo, id_color: l.id_color || undefined, id_talla: l.id_talla || undefined,
-      cantidad: Number(l.cantidad), precio_unitario: Number(l.precio_unitario), importe: Number(l.cantidad) * Number(l.precio_unitario || 0),
+    const lineas_nuevas = nuevasValidas.map((l) => ({
+      id_articulo: l.id_articulo, id_color: l.id_color || undefined, id_talla: l.id_talla || undefined, cantidad: Number(l.cantidad),
     }));
     if (lineas_devueltas.length === 0 || lineas_nuevas.length === 0)
       return Swal.fire('Faltan líneas', 'Indica prendas devueltas (del ticket) y prendas nuevas', 'warning');
+    if (!cot) return Swal.fire('Sin precio', 'No se pudo cotizar las prendas nuevas (revisa la variante).', 'warning');
     const falta = diferencia > 0 ? faltaDestino({ ...pagoDif, importe: pagoDiferencia }) : null;
     if (falta) return Swal.fire('Falta el destino del pago', falta, 'warning');
     setSaving(true);
@@ -353,42 +360,33 @@ function TabCambios() {
         ...(diferencia > 0 ? { forma_diferencia: pagoDif.forma, ...destinoPayload(pagoDif) } : {}),
       });
       await imprimirTicket(res.data);
-      setVenta(null); setSel({}); setNuevas([]); setPagoDiferencia(0); setPagoDif({ forma: 'efectivo', id_terminal: '', id_banco: '' }); cargar();
-      Swal.fire({ icon: 'success', title: 'Cambio registrado', timer: 1600, showConfirmButton: false });
+      setVenta(null); setSel({}); setNuevas([]); setCot(null); setPagoDiferencia(0); setPagoDif({ forma: 'efectivo', id_terminal: '', id_banco: '' }); cargar();
+      aviso('Cambio registrado');
     } catch (e) { Swal.fire('Error', e.message, 'error'); }
     finally { setSaving(false); }
   }
 
+  // El ticket usa lo que REGISTRO el servidor (precios, totales y diferencia), no lo capturado en pantalla
   async function imprimirTicket(cambio) {
-    const devueltas = lineasTicket
-      .map((l, i) => ({ l, cant: Number(sel[i] || 0) }))
-      .filter((x) => x.cant > 0)
-      .map(({ l, cant }) => ({
-        cant: `${cant}x`,
-        texto: `${l.codigo || ''} ${l.id_articulo?.descripcion || l.descripcion || ''}`.trim(),
-        detalle: `${l.id_color?.nombre || '—'}/${l.id_talla?.nombre || '—'} · ${money(l.precio_unitario)}`,
-        importe: cant * Number(l.precio_unitario || 0),
-      }));
-    const nuevasLineas = nuevas
-      .filter((l) => l.id_articulo && Number(l.cantidad) > 0)
-      .map((l) => {
-        const color = l.art?.colores?.find((c) => c._id === l.id_color)?.nombre || '—';
-        const talla = l.art?.tallas?.find((t) => t._id === l.id_talla)?.nombre || '—';
-        return {
-          cant: `${l.cantidad}x`,
-          texto: `${l.codigo || ''} ${l.descripcion || ''}`.trim(),
-          detalle: `${color}/${talla} · ${money(l.precio_unitario)}`,
-          importe: Number(l.cantidad) * Number(l.precio_unitario || 0),
-        };
-      });
+    const aTicket = (l) => ({
+      cant: `${l.cantidad}x`,
+      texto: `${l.codigo || ''} ${l.descripcion || ''}`.trim(),
+      detalle: `${l.color || '—'}/${l.talla || '—'} · ${money(l.precio_unitario)}`,
+      importe: Number(l.importe || 0),
+    });
+    const devueltas = (cambio?.lineas_devueltas || []).map(aTicket);
+    const nuevasLineas = (cambio?.lineas_nuevas || []).map(aTicket);
+    const dif = Number(cambio?.diferencia || 0);
+    const pagado = Number(cambio?.pago_diferencia || 0);
 
     const totales = [
-      { label: 'Total devuelto', value: totalDevuelto },
-      { label: 'Total nuevo', value: totalNuevo },
-      { label: 'Diferencia', value: diferencia, fuerte: true },
+      { label: 'Total devuelto', value: Number(cambio?.total_devuelto || 0) },
+      { label: 'Total nuevo', value: Number(cambio?.total_nuevo || 0) },
+      { label: 'Diferencia', value: dif, fuerte: true },
     ];
-    if (diferencia > 0) totales.push({ label: 'Pago de diferencia', value: Number(pagoDiferencia) });
-    if (diferencia < 0) totales.push({ label: 'Saldo a favor (monedero)', value: -diferencia });
+    if (dif > 0) totales.push({ label: 'Pago de diferencia', value: pagado });
+    if (dif > 0 && dif - pagado > 0.005) totales.push({ label: 'A cuenta por cobrar', value: dif - pagado });
+    if (dif < 0) totales.push({ label: 'Saldo a favor (monedero)', value: -dif });
 
     const idCliente = idOf(venta?.id_cliente);
     const { saldoMonedero, saldoCredito } = idCliente ? await saldosCliente(idCliente) : {};
@@ -406,7 +404,7 @@ function TabCambios() {
       totales,
       saldoMonedero,
       saldoCredito,
-      nota: diferencia > 0 ? 'El cliente paga la diferencia.' : diferencia < 0 ? 'Diferencia a favor del cliente.' : 'Cambio sin diferencia.',
+      nota: dif > 0 ? 'El cliente paga la diferencia.' : dif < 0 ? 'Diferencia a favor del cliente.' : 'Cambio sin diferencia.',
     });
   }
 
@@ -434,9 +432,9 @@ function TabCambios() {
               <p className="text-xs text-slate-400">Busca un ticket para listar sus prendas.</p>
             ) : lineasTicket.map((l, i) => (
               <div key={i} className="flex items-center justify-between gap-2 text-sm">
-                <span className="text-slate-600">{l.codigo} · {[l.id_color?.nombre, l.id_talla?.nombre].filter(Boolean).join('/') || '—'} · {money(l.precio_unitario)} (vend. {l.cantidad})</span>
-                <input type="number" min="0" max={l.cantidad} className="input-base w-20 text-xs" value={sel[i] || ''}
-                  onChange={(e) => setSel((s) => ({ ...s, [i]: Math.min(Number(e.target.value || 0), l.cantidad) }))} />
+                <span className="text-slate-600">{l.codigo} · {[l.id_color?.nombre, l.id_talla?.nombre].filter(Boolean).join('/') || '—'} · {money(l.precio_unitario)} (vend. {l.cantidad}{Number(l.devuelto) ? `, dev. ${l.devuelto}` : ''})</span>
+                <input type="number" min="0" max={pendiente(l)} disabled={pendiente(l) <= 0} className="input-base w-20 text-xs" value={sel[i] || ''}
+                  onChange={(e) => setSel((s) => ({ ...s, [i]: Math.max(0, Math.min(Number(e.target.value || 0), pendiente(l))) }))} />
               </div>
             ))}
           </div>
@@ -452,7 +450,7 @@ function TabCambios() {
                   <VariantesInline art={l.art} id_color={l.id_color} id_talla={l.id_talla} onChange={(patch) => updNueva(i, patch)} />
                 </div>
                 <input type="number" min="1" className="input-base col-span-1 text-xs !py-1" value={l.cantidad} onChange={(e) => updNueva(i, { cantidad: e.target.value })} />
-                <input type="number" min="0" step="0.01" className="input-base col-span-2 text-xs !py-1" value={l.precio_unitario} onChange={(e) => updNueva(i, { precio_unitario: e.target.value })} />
+                <span className="col-span-2 text-xs text-slate-700 text-right" title="Precio que cotiza el sistema">{precioNueva(i) !== undefined ? money(precioNueva(i)) : '—'}</span>
                 <button type="button" onClick={() => quitarNueva(i)} className="btn-ghost p-1 text-rose-600 col-span-1"><TrashIcon className="w-4 h-4" /></button>
               </div>
             ))}
@@ -481,7 +479,10 @@ function TabCambios() {
               <DestinoPago forma={pagoDif.forma} value={pagoDif} className="w-56" onChange={(d) => setPagoDif({ ...pagoDif, ...d })} />
             </div>
           )}
-          <button onClick={submit} disabled={saving} className="btn-primary mt-1">{saving ? 'Registrando…' : 'Registrar cambio'}</button>
+          {diferencia > 0 && Number(pagoDiferencia) + 0.005 < diferencia && (
+            <p className="text-xs text-amber-700">Lo que no se pague queda a crédito: el cliente necesita crédito autorizado y disponible.</p>
+          )}
+          {puedeCrear && <button onClick={submit} disabled={saving || (nuevasValidas.length > 0 && !cot)} className="btn-primary mt-1">{saving ? 'Registrando…' : 'Registrar cambio'}</button>}
         </div>
       </div>
       <h2 className="text-lg font-semibold text-slate-700">Cambios registrados</h2>

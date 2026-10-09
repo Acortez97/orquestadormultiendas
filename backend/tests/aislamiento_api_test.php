@@ -79,7 +79,7 @@ $apt = ok('B crea apartado', api('POST', '/apartados', ['id_cliente' => $cliB, '
     'lineas' => [['id_articulo' => $simpleB['_id'], 'cantidad' => 1]]], $tB), 201);
 ok('B registra anticipo', api('PATCH', "/apartados/{$apt['_id']}/anticipo", ['importe' => 10, 'forma' => 'efectivo'], $tB));
 $liq = ok('B liquida apartado (genera venta)', api('PATCH', "/apartados/{$apt['_id']}/liquidar", ['pagos' => [['forma' => 'efectivo', 'importe' => 100]], 'destino_cambio' => 'efectivo'], $tB));
-check('La liquidacion genero una venta', !empty($liq['generatedVentaId']));
+check('La liquidacion genero una venta', !empty($liq['id_venta']));
 status('Forma de pago interna "anticipo" rechazada en POS', api('POST', '/ventas', ['id_almacen' => $principalB,
     'lineas' => [['id_articulo' => $simpleB['_id'], 'cantidad' => 1]], 'pagos' => [['forma' => 'anticipo', 'importe' => 999]]], $tB), 400);
 
@@ -96,7 +96,10 @@ ok('B abona a CxC', api('POST', '/finanzas/cuentas-cliente/abono', ['id_cliente'
 ok('B paga a proveedor (CxP)', api('POST', '/finanzas/cuentas-proveedor/pago', ['id_proveedor' => $provB, 'monto' => 20, 'forma' => 'transferencia', 'id_banco' => $bancoB], $tB), 201);
 ok('B ajusta monedero', api('POST', '/monedero/ajuste', ['id_cliente' => $cliB, 'importe' => 15], $tB), 201);
 $comis = ok('B lista comisiones', api('GET', '/comisiones', null, $tB));
-check('La venta con vendedor genero comision', count($comis) === 1 && $comis[0]['folio_venta'] === $ventaB['folio']);
+// la venta genera la comision; la devolucion y el cambio la ajustan (mas reciente primero)
+check('La venta con vendedor genero comision (y sus ajustes)', count($comis) === 3 && count(array_filter($comis, fn($c) => $c['folio_venta'] === $ventaB['folio'])) === 3
+    && $comis[1]['importe'] < 0 && $comis[2]['importe'] > 0);
+$comis = [end($comis)];
 ok('B paga comision', api('PATCH', "/comisiones/{$comis[0]['_id']}/pagar", null, $tB));
 $corte = ok('B cierra corte del dia', api('POST', '/cortes/cerrar', ['id_almacen' => $principalB, 'fondo' => 500, 'efectivo_contado' => 600], $tB), 201);
 check('El folio del corte no usa ids internos', $corte['folio'] === 'CORTE-' . date('Y-m-d') . '-PRINCIPAL', $corte['folio'] ?? '');

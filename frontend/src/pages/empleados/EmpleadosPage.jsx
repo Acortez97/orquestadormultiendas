@@ -148,9 +148,9 @@ export default function EmpleadosPage() {
   ];
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="mx-auto max-w-7xl space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">Empleados</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Vendedores y empleados</h1>
         <button className="btn-primary flex items-center gap-2" onClick={abrirCrear}>
           <PlusIcon className="w-5 h-5" /> Nuevo empleado
         </button>

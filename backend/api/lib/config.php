@@ -17,6 +17,8 @@ $cfg = [
         'user'    => getenv('DB_USER') ?: '',
         'pass'    => getenv('DB_PASS') ?: '',
         'charset' => 'utf8mb4',
+        // Hora de la operacion (cortes, plazos, vencimientos). PHP y MySQL usan la misma.
+        'zona_horaria' => getenv('APP_TZ') ?: 'America/Mexico_City',
     ],
 
     // --- Seguridad / JWT ---

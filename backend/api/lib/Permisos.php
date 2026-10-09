@@ -34,6 +34,19 @@ class Permisos
         return $out;
     }
 
+    /**
+     * Costos (y valor del inventario) solo los ve quien tiene reportes.costos o los necesita para capturar:
+     * catalogos (editar el costo) y compras. Lo fija index.php en cada peticion.
+     */
+    public static $verCostos = false;
+    const VEN_COSTOS = ['reportes.costos', 'catalogos.crear', 'catalogos.editar', 'compras.crear', 'compras.editar'];
+
+    public static function verCostos(array $ctx): bool
+    {
+        foreach (self::VEN_COSTOS as $p) if (self::tiene($ctx, $p)) return true;
+        return false;
+    }
+
     public static function tiene(array $ctx, string $permiso): bool
     {
         [$m, $a] = array_pad(explode('.', $permiso, 2), 2, 'ver');

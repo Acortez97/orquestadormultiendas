@@ -1,21 +1,44 @@
 @import "tailwindcss";
 
-/* LEVOTEK Design System — Azul corporativo / Rojo (identidad LEVOTEK Solutions) */
-@theme {
-  /* Primary: Azul (marino -> azul brillante, como el monograma LT) */
-  --color-primary-50:  #eff6ff;
-  --color-primary-100: #dbeafe;
-  --color-primary-200: #bfdbfe;
-  --color-primary-300: #93c5fd;
-  --color-primary-400: #60a5fa;
-  --color-primary-500: #3b82f6;
-  --color-primary-600: #2563eb;
-  --color-primary-700: #1d4ed8;
-  --color-primary-800: #1e40af;
-  --color-primary-900: #1b2c63;
-  --color-primary-950: #16225a;
+/* ============================================================
+   Sistema visual «Mostrador»
+   - Fondo papel, tinta casi negra y UN color de acento: el de la tienda (--acento, lo fija la sesion).
+   - Verde / ambar / rojo solo para estados. Cifras tabulares en todo el sistema.
+   - Toda la escala primary-* se deriva de --acento, asi cada tienda ve su color sin recompilar.
+   ============================================================ */
+:root {
+  --acento: #1F4FD1;         /* color de la tienda (por defecto) */
+  --plataforma: #141B2E;     /* panel /admin */
+}
 
-  /* Accent: Rojo (acento del anillo del logo, uso puntual) */
+@theme {
+  /* Acento de la tienda: derivado de --acento */
+  --color-primary-50:  color-mix(in oklab, var(--acento) 7%, white);
+  --color-primary-100: color-mix(in oklab, var(--acento) 14%, white);
+  --color-primary-200: color-mix(in oklab, var(--acento) 28%, white);
+  --color-primary-300: color-mix(in oklab, var(--acento) 45%, white);
+  --color-primary-400: color-mix(in oklab, var(--acento) 70%, white);
+  --color-primary-500: color-mix(in oklab, var(--acento) 88%, white);
+  --color-primary-600: var(--acento);
+  --color-primary-700: color-mix(in oklab, var(--acento) 82%, black);
+  --color-primary-800: color-mix(in oklab, var(--acento) 68%, black);
+  --color-primary-900: color-mix(in oklab, var(--acento) 52%, black);
+  --color-primary-950: color-mix(in oklab, var(--acento) 40%, black);
+
+  /* Neutros calidos (papel / tinta). Reemplazan la escala slate en todas las pantallas. */
+  --color-slate-50:  #F5F4F0;
+  --color-slate-100: #EEEDE8;
+  --color-slate-200: #E3E1DA;
+  --color-slate-300: #CFCCC3;
+  --color-slate-400: #9C998F;
+  --color-slate-500: #6B6E76;
+  --color-slate-600: #4A4D55;
+  --color-slate-700: #3B3E45;
+  --color-slate-800: #26282D;
+  --color-slate-900: #17181C;
+  --color-slate-950: #0E0F12;
+
+  /* Acento secundario (uso puntual) */
   --color-accent-50:  #fef2f2;
   --color-accent-100: #fee2e2;
   --color-accent-200: #fecaca;
@@ -27,50 +50,50 @@
   --color-accent-800: #991b1b;
   --color-accent-900: #7f1d1d;
 
-  /* Success */
-  --color-success-50:  #f0fdf4;
-  --color-success-100: #dcfce7;
-  --color-success-200: #bbf7d0;
-  --color-success-500: #22c55e;
-  --color-success-600: #16a34a;
-  --color-success-700: #15803d;
-  --color-success-800: #166534;
+  /* Estados */
+  --color-success-50:  #EFF7F2;
+  --color-success-100: #E6F2EB;
+  --color-success-200: #C3E2D0;
+  --color-success-500: #2E9A62;
+  --color-success-600: #1E7A4C;
+  --color-success-700: #17633D;
+  --color-success-800: #124D30;
 
-  /* Warning */
-  --color-warning-50:  #fffbeb;
-  --color-warning-100: #fef3c7;
-  --color-warning-200: #fde68a;
-  --color-warning-500: #f59e0b;
-  --color-warning-600: #d97706;
-  --color-warning-700: #b45309;
-  --color-warning-800: #92400e;
+  --color-warning-50:  #FDF7EE;
+  --color-warning-100: #FBF0E1;
+  --color-warning-200: #F4D9AE;
+  --color-warning-500: #C77A12;
+  --color-warning-600: #A35A00;
+  --color-warning-700: #8A4B00;
+  --color-warning-800: #6B3A00;
 
-  /* Danger */
-  --color-danger-50:  #fff1f2;
-  --color-danger-100: #ffe4e6;
-  --color-danger-200: #fecdd3;
-  --color-danger-500: #f43f5e;
-  --color-danger-600: #e11d48;
-  --color-danger-700: #be123c;
-  --color-danger-800: #9f1239;
+  --color-danger-50:  #FDF1F0;
+  --color-danger-100: #FDECEA;
+  --color-danger-200: #F2C6C1;
+  --color-danger-500: #D2392B;
+  --color-danger-600: #B42318;
+  --color-danger-700: #931C13;
+  --color-danger-800: #73160F;
 
-  /* Semaforo */
-  --color-semaforo-verde:   #16a34a;
-  --color-semaforo-amarillo:#d97706;
-  --color-semaforo-rojo:    #dc2626;
+  --color-plataforma: #141B2E;
 
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --color-semaforo-verde:   #1E7A4C;
+  --color-semaforo-amarillo:#A35A00;
+  --color-semaforo-rojo:    #B42318;
+
+  --font-sans: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
 
   --animate-fade-in:      fadeIn 0.2s ease-out;
-  --animate-slide-in-up:  slideInUp 0.3s ease-out;
-  --animate-slide-in-right: slideInRight 0.3s ease-out;
+  --animate-slide-in-up:  slideInUp 0.25s ease-out;
+  --animate-slide-in-right: slideInRight 0.25s ease-out;
 
   @keyframes fadeIn {
     0%   { opacity: 0; }
     100% { opacity: 1; }
   }
   @keyframes slideInUp {
-    0%   { transform: translateY(20px); opacity: 0; }
+    0%   { transform: translateY(16px); opacity: 0; }
     100% { transform: translateY(0);    opacity: 1; }
   }
   @keyframes slideInRight {
@@ -81,81 +104,78 @@
 
 @layer base {
   * { @apply border-slate-200; }
-  body { @apply bg-slate-50 text-slate-900 antialiased; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased font-sans;
+    font-variant-numeric: tabular-nums;   /* cifras alineadas en tablas, tickets y totales */
+  }
 
   ::-webkit-scrollbar       { @apply w-1.5 h-1.5; }
-  ::-webkit-scrollbar-track { @apply bg-slate-100 rounded-full; }
+  ::-webkit-scrollbar-track { @apply bg-transparent; }
   ::-webkit-scrollbar-thumb { @apply bg-slate-300 rounded-full hover:bg-slate-400; }
 
-  :focus-visible { @apply outline-none ring-2 ring-primary-500 ring-offset-2; }
+  :focus-visible { @apply outline-none ring-2 ring-primary-600 ring-offset-2 ring-offset-white; }
 }
 
 @layer components {
   .input-base {
-    @apply w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg
-           placeholder:text-slate-400
-           focus:border-primary-500 focus:ring-1 focus:ring-primary-500
-           disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed
-           transition-colors duration-200;
+    @apply w-full min-h-10 px-3 py-2 text-[15px] bg-white border border-slate-300 rounded-[10px]
+           text-slate-900 placeholder:text-slate-400
+           focus:border-primary-600 focus:ring-1 focus:ring-primary-600 focus:outline-none
+           disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed
+           transition-colors duration-150;
   }
 
-  .btn {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium
-           rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+  /* base comun de todos los botones (en Tailwind 4 una clase propia no se puede @apply-ar) */
+  .btn, .btn-primary, .btn-secondary, .btn-outline, .btn-ghost, .btn-danger, .btn-accent {
+    @apply inline-flex items-center justify-center gap-2 min-h-10 px-4 text-sm font-semibold
+           rounded-[10px] transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed select-none;
   }
-  .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium
-           rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
-           bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800;
-  }
-  .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium
-           rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
-           bg-slate-100 text-slate-700 hover:bg-slate-200 active:bg-slate-300;
-  }
-  .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium
-           rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
-           bg-danger-600 text-white hover:bg-danger-700 active:bg-danger-800;
-  }
-  .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium
-           rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
-           bg-transparent text-slate-600 hover:bg-slate-100 active:bg-slate-200;
-  }
-  .btn-outline {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium
-           rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
-           bg-transparent border border-slate-300 text-slate-700 hover:bg-slate-50 active:bg-slate-100;
-  }
-  .btn-accent {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium
-           rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
-           bg-accent-500 text-white hover:bg-accent-600 active:bg-accent-700;
-  }
+  .btn-primary   { @apply bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800; }
+  .btn-secondary { @apply bg-white border border-slate-300 text-slate-900 hover:bg-slate-100 active:bg-slate-200; }
+  .btn-outline   { @apply bg-white border border-slate-300 text-slate-900 hover:bg-slate-100 active:bg-slate-200; }
+  .btn-ghost     { @apply bg-transparent text-slate-700 hover:bg-slate-100 active:bg-slate-200; }
+  .btn-danger    { @apply bg-danger-50 border border-danger-200 text-danger-600 hover:bg-danger-100 active:bg-danger-200; }
+  .btn-accent    { @apply bg-slate-900 text-white hover:bg-slate-800 active:bg-slate-950; }
 
-  .card { @apply bg-white rounded-xl border border-slate-200 shadow-sm; }
+  .card { @apply bg-white rounded-[14px] border border-slate-200; }
 
-  .badge         { @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full; }
-  .badge-success { @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full bg-success-100 text-success-800; }
-  .badge-warning { @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full bg-warning-100 text-warning-800; }
-  .badge-danger  { @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full bg-danger-100  text-danger-800;  }
-  .badge-primary { @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full bg-primary-100 text-primary-800; }
-  .badge-slate   { @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full bg-slate-100   text-slate-800;   }
-  .badge-accent  { @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full bg-accent-100  text-accent-800;  }
+  .badge, .badge-success, .badge-warning, .badge-danger, .badge-primary, .badge-slate, .badge-accent {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 text-xs font-semibold rounded-full whitespace-nowrap;
+  }
+  .badge-success { @apply bg-success-100 text-success-600; }
+  .badge-warning { @apply bg-warning-100 text-warning-700; }
+  .badge-danger  { @apply bg-danger-100  text-danger-600; }
+  .badge-primary { @apply bg-primary-100 text-primary-800; }
+  .badge-slate   { @apply bg-slate-100   text-slate-700; }
+  .badge-accent  { @apply bg-slate-900   text-white; }
+
+  /* Folios, codigos y SKU */
+  .folio { @apply font-mono text-[0.92em] tracking-tight; }
+
+  /* Pantallas tactiles: botones y campos de 44 px como minimo */
+  @media (pointer: coarse) {
+    .btn, .btn-primary, .btn-secondary, .btn-outline, .btn-ghost, .btn-danger, .btn-accent, .input-base { @apply min-h-11; }
+  }
 }
 
 @layer utilities {
   .skeleton { @apply animate-pulse bg-slate-200 rounded; }
+  /* margenes de la muesca / barra de gestos (app de Capacitor y Safari) */
+  .pb-safe { padding-bottom: max(env(safe-area-inset-bottom), 0px); }
+  .pt-safe { padding-top: max(env(safe-area-inset-top), 0px); }
 
-  /* LEVOTEK gradient — marino a azul brillante */
-  .gradient-brand {
-    background: linear-gradient(135deg, #16225a 0%, #2563eb 100%);
-  }
-  .gradient-brand-text {
-    background: linear-gradient(135deg, #16225a 0%, #2563eb 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
+  .gradient-brand { background: var(--color-plataforma); }
+  .gradient-brand-text { color: var(--color-plataforma); }
 }
+
+/* Ventanas de confirmacion (SweetAlert2) con el estilo del sistema */
+.swal2-popup { font-family: inherit !important; border-radius: 20px !important; color: var(--color-slate-900) !important; }
+.swal2-title { font-weight: 700 !important; letter-spacing: -0.01em; }
+.swal2-styled { border-radius: 10px !important; font-weight: 600 !important; min-height: 44px; }
+.swal2-styled.swal2-confirm { background: var(--acento) !important; }
+.swal2-styled.swal2-cancel { background: #fff !important; color: var(--color-slate-900) !important; border: 1px solid var(--color-slate-300) !important; }
+.swal2-styled:focus { box-shadow: 0 0 0 3px color-mix(in oklab, var(--acento) 35%, white) !important; }
+.swal2-popup.aviso-toast { background: var(--color-slate-900) !important; color: #fff !important; border-radius: 14px !important; padding: 10px 16px !important; margin-bottom: calc(env(safe-area-inset-bottom) + 76px) !important; }
+@media (min-width: 640px) { .swal2-popup.aviso-toast { margin-bottom: 16px !important; } }
+.swal2-popup.aviso-toast .swal2-title { color: #fff !important; font-size: 15px !important; font-weight: 600 !important; }

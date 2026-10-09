@@ -1,22 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
-import { FunnelIcon, ShoppingBagIcon, BanknotesIcon, CalculatorIcon, XCircleIcon } from '@heroicons/react/24/outline';
+import { FunnelIcon } from '@heroicons/react/24/outline';
 import Swal from 'sweetalert2';
 import DataTable from '../../components/common/DataTable';
-import Modal from '../../components/common/Modal';
+import PanelDetalle from '../../components/common/PanelDetalle';
 import { ventasApi, almacenesApi, clientesApi } from '../../services/api/endpoints';
 import { useAuth } from '../../contexts/AuthContext';
+import { hoyLocal, aFecha } from '../../utils/fechas';
+import { FORMA_LABEL } from '../../components/common/DestinoPago';
+import { aviso } from '../../utils/avisos';
 
 const money = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n || 0);
-const fecha = (d) => (d ? new Date(d).toLocaleDateString('es-MX') : '');
+const fecha = (d) => (d ? aFecha(d).toLocaleDateString('es-MX') : '');
 
-// Fecha de hoy (local) en formato yyyy-mm-dd para los inputs date.
-const hoyLocal = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-// Convierte un yyyy-mm-dd a instante ISO de inicio / fin de ese día en hora local.
-const inicioDiaISO = (d) => (d ? new Date(`${d}T00:00:00`).toISOString() : '');
-const finDiaISO = (d) => (d ? new Date(`${d}T23:59:59.999`).toISOString() : '');
 const filtrosIniciales = () => ({ id_almacen: '', id_cliente: '', desde: hoyLocal(), hasta: hoyLocal() });
 
 const estadoBadge = (estado) =>
@@ -34,6 +29,7 @@ export default function VentasPage() {
   const [detalle, setDetalle] = useState(null);
   const [detalleLoading, setDetalleLoading] = useState(false);
   const [cancelando, setCancelando] = useState(false);
+  const [verFiltros, setVerFiltros] = useState(false);   // en celular los filtros se abren con un boton
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -41,8 +37,8 @@ export default function VentasPage() {
       const params = {};
       if (filtros.id_almacen) params.id_almacen = filtros.id_almacen;
       if (filtros.id_cliente) params.id_cliente = filtros.id_cliente;
-      if (filtros.desde) params.desde = inicioDiaISO(filtros.desde);
-      if (filtros.hasta) params.hasta = finDiaISO(filtros.hasta);
+      if (filtros.desde) params.desde = filtros.desde;   // dia local; el API cubre de 00:00 a 23:59:59
+      if (filtros.hasta) params.hasta = filtros.hasta;
       const res = await ventasApi.listar(params);
       setRows(res.data?.docs ?? res.data ?? []);
     } catch (err) {
@@ -95,7 +91,7 @@ export default function VentasPage() {
     setCancelando(true);
     try {
       await ventasApi.cancelar(detalle._id);
-      Swal.fire({ icon: 'success', title: 'Venta cancelada', timer: 1600, showConfirmButton: false });
+      aviso('Venta cancelada');
       setDetalle(null);
       cargar();
     } catch (err) {
@@ -113,7 +109,7 @@ export default function VentasPage() {
   const topeAlcanzado = rows.length >= 200;
 
   const columns = [
-    { key: 'folio', label: 'Folio', className: 'font-medium text-slate-900' },
+    { key: 'folio', label: 'Folio', className: 'font-medium text-slate-900', render: (r) => <span className="folio">{r.folio}</span> },
     { key: 'fecha', label: 'Fecha', render: (r) => fecha(r.fecha) },
     { key: 'cliente', label: 'Cliente', render: (r) => r.id_cliente?.nombre || '—' },
     { key: 'tienda', label: 'Tienda', render: (r) => r.id_almacen?.nombre || '—' },
@@ -126,15 +122,19 @@ export default function VentasPage() {
   ];
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="mx-auto max-w-7xl space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">Ventas</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Ventas</h1>
       </div>
 
-      {/* Filtros */}
-      <div className="card p-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex items-center gap-2 text-slate-500">
+      {/* Filtros (en celular, detras de un boton) */}
+      <button type="button" className="btn-secondary w-full sm:hidden" aria-expanded={verFiltros} onClick={() => setVerFiltros((v) => !v)}>
+        <FunnelIcon className="h-5 w-5" />
+        {verFiltros ? 'Ocultar filtros' : `Filtros · ${[filtros.id_almacen, filtros.id_cliente].filter(Boolean).length + (filtros.desde || filtros.hasta ? 1 : 0)}`}
+      </button>
+      <div className={`card p-4 ${verFiltros ? '' : 'hidden sm:block'}`}>
+        <div className="grid grid-cols-2 items-end gap-3 sm:flex sm:flex-wrap">
+          <div className="hidden items-center gap-2 text-slate-500 sm:flex">
             <FunnelIcon className="w-4 h-4" />
             <span className="text-sm font-medium">Filtros</span>
           </div>
@@ -204,208 +204,99 @@ export default function VentasPage() {
         </div>
       </div>
 
-      {/* Dashboard del rango/filtros seleccionados */}
+      {/* Resumen del rango / filtros */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <div className="card p-4 flex items-center gap-3">
-          <div className="w-10 h-10 shrink-0 rounded-lg bg-primary-50 flex items-center justify-center">
-            <ShoppingBagIcon className="w-5 h-5 text-primary-600" />
+        {[
+          ['Ventas', loading ? '…' : completadas.length, ''],
+          ['Total vendido', loading ? '…' : money(montoVendido), ''],
+          ['Ticket promedio', loading ? '…' : money(ticketPromedio), ''],
+          ['Canceladas', loading ? '…' : canceladas.length, canceladas.length ? 'text-danger-600' : ''],
+        ].map(([t, v, c]) => (
+          <div key={t} className="card p-4">
+            <p className="text-[13px] text-slate-600">{t}</p>
+            <p className={`truncate text-xl font-bold sm:text-2xl ${c}`}>{v}</p>
           </div>
-          <div className="min-w-0">
-            <p className="text-xs text-slate-500">N.º de ventas</p>
-            <p className="text-xl font-bold text-slate-800">{loading ? '…' : completadas.length}</p>
-          </div>
-        </div>
-
-        <div className="card p-4 flex items-center gap-3">
-          <div className="w-10 h-10 shrink-0 rounded-lg bg-emerald-50 flex items-center justify-center">
-            <BanknotesIcon className="w-5 h-5 text-emerald-600" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs text-slate-500">Total vendido</p>
-            <p className="text-xl font-bold text-slate-800 truncate">{loading ? '…' : money(montoVendido)}</p>
-          </div>
-        </div>
-
-        <div className="card p-4 flex items-center gap-3">
-          <div className="w-10 h-10 shrink-0 rounded-lg bg-indigo-50 flex items-center justify-center">
-            <CalculatorIcon className="w-5 h-5 text-indigo-600" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs text-slate-500">Ticket promedio</p>
-            <p className="text-xl font-bold text-slate-800 truncate">{loading ? '…' : money(ticketPromedio)}</p>
-          </div>
-        </div>
-
-        <div className="card p-4 flex items-center gap-3">
-          <div className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center ${canceladas.length ? 'bg-rose-50' : 'bg-slate-100'}`}>
-            <XCircleIcon className={`w-5 h-5 ${canceladas.length ? 'text-rose-600' : 'text-slate-400'}`} />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs text-slate-500">Canceladas</p>
-            <p className={`text-xl font-bold ${canceladas.length ? 'text-rose-600' : 'text-slate-800'}`}>{loading ? '…' : canceladas.length}</p>
-          </div>
-        </div>
+        ))}
       </div>
 
       {topeAlcanzado && (
         <p className="text-xs text-amber-600 -mt-2">Mostrando las primeras 200 ventas; afina el rango para un conteo exacto.</p>
       )}
 
+      <div className="lg:flex lg:items-start lg:gap-4">
+      <div className="min-w-0 flex-1">
       <DataTable
         columns={columns}
         data={rows}
         loading={loading}
         empty="Sin ventas"
         onRowClick={abrirDetalle}
+        selectedId={detalle?._id}
         exportName="ventas"
         exportTitle="Ventas"
       />
+      </div>
 
-      {/* Detalle */}
-      <Modal
+      {/* Detalle: panel a un lado (computadora) u hoja (celular) */}
+      <PanelDetalle
         open={!!detalle}
         onClose={() => setDetalle(null)}
         title={detalle ? `Venta ${detalle.folio}` : 'Venta'}
-        size="xl"
         footer={
-          detalle && (
-            <>
-              <button className="btn-secondary" onClick={() => setDetalle(null)}>
-                Cerrar
-              </button>
-              {detalle.estado === 'completada' && hasPermiso('ventas.cancelar') && (
-                <button className="btn-danger" disabled={cancelando} onClick={cancelarVenta}>
-                  {cancelando ? 'Cancelando…' : 'Cancelar venta'}
-                </button>
-              )}
-            </>
+          detalle && detalle.estado === 'completada' && hasPermiso('ventas.cancelar') && (
+            <button className="btn-danger" disabled={cancelando} onClick={cancelarVenta}>
+              {cancelando ? 'Cancelando…' : 'Cancelar venta'}
+            </button>
           )
         }
       >
         {detalle && (
           <div className="space-y-5">
-            {detalleLoading && <p className="text-sm text-slate-400">Cargando detalle…</p>}
-
-            {/* Encabezado */}
-            <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-3">
-              <div>
-                <p className="text-xs text-slate-500">Fecha</p>
-                <p className="font-medium text-slate-800">{fecha(detalle.fecha)}</p>
+            {detalleLoading && <div className="skeleton h-4 w-32" />}
+            <div className="flex items-start justify-between gap-3">
+              <div className="text-sm text-slate-600">
+                <p>{fecha(detalle.fecha)} · {detalle.id_almacen?.nombre || '—'}</p>
+                <p>Vendedor: {detalle.id_vendedor ? `${detalle.id_vendedor.nombre || ''} ${detalle.id_vendedor.apellido || ''}`.trim() || '—' : '—'}</p>
               </div>
-              <div>
-                <p className="text-xs text-slate-500">Cliente</p>
-                <p className="font-medium text-slate-800">{detalle.id_cliente?.nombre || '—'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">Vendedor</p>
-                <p className="font-medium text-slate-800">
-                  {detalle.id_vendedor
-                    ? `${detalle.id_vendedor.nombre || ''} ${detalle.id_vendedor.apellido || ''}`.trim() || '—'
-                    : '—'}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">Tienda</p>
-                <p className="font-medium text-slate-800">{detalle.id_almacen?.nombre || '—'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">Nivel cantidad</p>
-                <p className="font-medium text-slate-800">{detalle.nivel_cantidad ?? '—'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">Estado</p>
-                <span className={estadoBadge(detalle.estado)}>{detalle.estado}</span>
-              </div>
+              <span className={estadoBadge(detalle.estado)}>{detalle.estado}</span>
             </div>
-
-            {/* Líneas */}
             <div>
-              <p className="text-sm font-semibold text-slate-700 mb-2">Artículos</p>
-              <div className="card overflow-hidden">
-                <table className="min-w-full divide-y divide-slate-200 text-sm">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase">Código</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase">Descripción</th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-500 uppercase">Cant.</th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-500 uppercase">P. Unit.</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase">Lista</th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-500 uppercase">Importe</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {(detalle.lineas || []).map((l, i) => (
-                      <tr key={i}>
-                        <td className="px-3 py-2 text-slate-700">{l.codigo}</td>
-                        <td className="px-3 py-2 text-slate-700">{l.descripcion}</td>
-                        <td className="px-3 py-2 text-right text-slate-700">{l.cantidad}</td>
-                        <td className="px-3 py-2 text-right text-slate-700">{money(l.precio_unitario)}</td>
-                        <td className="px-3 py-2 text-slate-700">{l.lista_aplicada || '—'}</td>
-                        <td className="px-3 py-2 text-right font-medium text-slate-800">{money(l.importe)}</td>
-                      </tr>
-                    ))}
-                    {(!detalle.lineas || detalle.lineas.length === 0) && (
-                      <tr>
-                        <td colSpan={6} className="px-3 py-6 text-center text-slate-400">
-                          Sin artículos
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-600">Cliente</p>
+              <p className="font-semibold">{detalle.id_cliente?.nombre || '—'}</p>
             </div>
 
-            {/* Pagos + totales */}
-            <div className="grid gap-5 md:grid-cols-2">
-              <div>
-                <p className="text-sm font-semibold text-slate-700 mb-2">Pagos</p>
-                <div className="card divide-y divide-slate-100">
-                  {(detalle.pagos || []).map((p, i) => (
-                    <div key={i} className="flex justify-between px-3 py-2 text-sm">
-                      <span className="text-slate-600 capitalize">{p.forma}</span>
-                      <span className="font-medium text-slate-800">{money(p.importe)}</span>
-                    </div>
-                  ))}
-                  {(!detalle.pagos || detalle.pagos.length === 0) && (
-                    <p className="px-3 py-4 text-center text-sm text-slate-400">Sin pagos</p>
-                  )}
-                </div>
-              </div>
+            <ul className="space-y-3 border-t border-slate-200 pt-4">
+              {(detalle.lineas || []).map((l, i) => (
+                <li key={i} className="flex justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold">{l.cantidad} × {l.descripcion}</p>
+                    <p className="text-[13px] text-slate-600">
+                      <span className="folio">{l.codigo}</span>
+                      {[l.color, l.talla].filter(Boolean).length ? ` · ${[l.color, l.talla].filter(Boolean).join(' / ')}` : ''}
+                      {` · ${money(l.precio_unitario)} · Lista ${l.lista_aplicada || '—'}`}
+                    </p>
+                  </div>
+                  <p className="shrink-0 font-semibold">{money(l.importe)}</p>
+                </li>
+              ))}
+              {(!detalle.lineas || detalle.lineas.length === 0) && !detalleLoading && <li className="text-slate-600">Sin artículos</li>}
+            </ul>
 
-              <div className="card p-4 space-y-2 text-sm self-start">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Total</span>
-                  <span className="font-semibold text-slate-800">{money(detalle.total)}</span>
+            <div className="space-y-1.5 border-t border-slate-200 pt-4 text-sm">
+              <div className="flex justify-between text-xl font-bold"><span>Total</span><span>{money(detalle.total)}</span></div>
+              {(detalle.pagos || []).map((p, i) => (
+                <div key={i} className="flex justify-between text-slate-700">
+                  <span>{FORMA_LABEL[p.forma] || p.forma}{p.referencia ? ` · ${p.referencia}` : ''}</span><span>{money(p.importe)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Total pagado</span>
-                  <span className="text-slate-800">{money(detalle.total_pagado)}</span>
-                </div>
-                {detalle.a_credito && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">A crédito</span>
-                    <span className="text-slate-800">{money(detalle.monto_credito)}</span>
-                  </div>
-                )}
-                {!!detalle.saldo_favor_generado && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Saldo a favor generado</span>
-                    <span className="text-slate-800">{money(detalle.saldo_favor_generado)}</span>
-                  </div>
-                )}
-                {!!detalle.cambio_efectivo && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Cambio (efectivo)</span>
-                    <span className="text-slate-800">{money(detalle.cambio_efectivo)}</span>
-                  </div>
-                )}
-                {detalle.a_credito && <span className="badge-warning">Venta a crédito</span>}
-              </div>
+              ))}
+              {detalle.a_credito && <div className="flex justify-between"><span className="text-slate-600">A crédito</span><span>{money(detalle.monto_credito)}</span></div>}
+              {!!detalle.saldo_favor_generado && <div className="flex justify-between"><span className="text-slate-600">Al monedero</span><span>{money(detalle.saldo_favor_generado)}</span></div>}
+              {!!detalle.cambio_efectivo && <div className="flex justify-between"><span className="text-slate-600">Cambio entregado</span><span>{money(detalle.cambio_efectivo)}</span></div>}
             </div>
           </div>
         )}
-      </Modal>
+      </PanelDetalle>
+      </div>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { PlusIcon } from '@heroicons/react/24/outline';
 import DataTable from '../../components/common/DataTable';
 import Modal from '../../components/common/Modal';
 import { almacenesApi } from '../../services/api/endpoints';
+import { aviso } from '../../utils/avisos';
 
 const vacio = { codigo: '', nombre: '', tipo: 'tienda', vende_publico: true, serie_folio: '', direccion: '', telefono: '' };
 
@@ -34,14 +35,14 @@ export default function AlmacenesPage() {
       else await almacenesApi.crear(form);
       setOpen(false);
       cargar();
-      Swal.fire({ icon: 'success', title: 'Guardado', timer: 1200, showConfirmButton: false });
+      aviso('Guardado');
     } catch (e) { Swal.fire('Error', e.message, 'error'); }
   };
 
   const eliminar = async (r) => {
     const c = await Swal.fire({ title: `¿Desactivar ${r.nombre}?`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#e11d48' });
     if (!c.isConfirmed) return;
-    await almacenesApi.eliminar(r._id); cargar();
+    try { await almacenesApi.eliminar(r._id); cargar(); } catch (e) { Swal.fire('Error', e.message, 'error'); }
   };
 
   const columns = [
@@ -59,9 +60,9 @@ export default function AlmacenesPage() {
   ];
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="mx-auto max-w-7xl space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">Almacenes</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Almacenes</h1>
         <button className="btn-primary" onClick={abrirNuevo}><PlusIcon className="w-4 h-4" /> Nuevo</button>
       </div>
       <DataTable columns={columns} data={rows} loading={loading} empty="Sin almacenes" exportName="almacenes" exportTitle="Almacenes" />

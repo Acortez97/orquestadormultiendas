@@ -79,8 +79,8 @@ function CatalogoCRUD({ tab }) {
 export default function CatalogosPage() {
   const [active, setActive] = useState(TABS[0]);
   return (
-    <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-bold text-slate-800">Catálogos base</h1>
+    <div className="mx-auto max-w-7xl space-y-4">
+      <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Catálogos</h1>
       <div className="flex flex-wrap gap-2 border-b border-slate-200">
         {TABS.map((t) => (
           <button key={t.key} onClick={() => setActive(t)}

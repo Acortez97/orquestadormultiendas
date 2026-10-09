@@ -4,10 +4,11 @@ import Swal from 'sweetalert2';
 import DataTable from '../../components/common/DataTable';
 import { useAuth } from '../../contexts/AuthContext';
 import { comisionesApi, empleadosApi } from '../../services/api/endpoints';
+import { aFecha } from '../../utils/fechas';
 
 const money = (n) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n || 0);
-const fecha = (d) => (d ? new Date(d).toLocaleDateString('es-MX') : '');
+const fecha = (d) => (d ? aFecha(d).toLocaleDateString('es-MX') : '');
 
 export default function ComisionesPage() {
   const { hasPermiso } = useAuth();
@@ -38,20 +39,14 @@ export default function ComisionesPage() {
     cargar();
   }, [cargar]);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [emp, res] = await Promise.all([
-          empleadosApi.listar(),
-          comisionesApi.resumen().catch(() => null),
-        ]);
-        setEmpleados(emp.data?.docs ?? emp.data ?? []);
-        if (res) setResumen(res.data ?? res);
-      } catch (_) {
-        /* noop */
-      }
-    })();
+  const cargarResumen = useCallback(() => {
+    comisionesApi.resumen().then((res) => setResumen(res.data ?? res)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    empleadosApi.listar().then((emp) => setEmpleados(emp.data?.docs ?? emp.data ?? [])).catch(() => {});
+    cargarResumen();
+  }, [cargarResumen]);
 
   async function pagar(row) {
     const { isConfirmed } = await Swal.fire({
@@ -66,6 +61,7 @@ export default function ComisionesPage() {
       const res = await comisionesApi.pagar(row._id);
       if (res.success === false) throw new Error(res.message);
       cargar();
+      cargarResumen();   // pendiente / pagadas cambian al pagar
       Swal.fire('Listo', 'Comisión pagada', 'success');
     } catch (e) {
       Swal.fire('Error', e.message || 'No se pudo pagar', 'error');
@@ -113,9 +109,9 @@ export default function ComisionesPage() {
   ];
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="mx-auto max-w-7xl space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">Comisiones</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Comisiones</h1>
       </div>
 
       {resumen && (

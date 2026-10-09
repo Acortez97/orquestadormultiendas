@@ -124,10 +124,24 @@ class Usuarios
             $rol = $b['rol'];
         }
         $activo = array_key_exists('is_active', $b) ? (($b['is_active'] === 'No' || $b['is_active'] === false) ? 'No' : 'Si') : $u['is_active'];
+        // reactivar cuenta contra el limite de usuarios que puso la plataforma (el superadmin si puede excederlo)
+        if ($porAdminTienda && $activo === 'Si' && $u['is_active'] !== 'Si') {
+            $max = Db::one('SELECT max_usuarios FROM empresas WHERE id = ?', [$idEmpresa])['max_usuarios'];
+            if ($max !== null && (int) Db::one("SELECT COUNT(*) n FROM users WHERE id_empresa = ? AND is_active = 'Si'", [$idEmpresa])['n'] >= (int) $max)
+                throw new ApiError('La tienda alcanzo su limite de usuarios activos', 400, 'LIMITE');
+        }
         $alm = (array_key_exists('id_tienda', $b) || array_key_exists('id_almacen_default', $b))
             ? self::almacen($idEmpresa, $b['id_tienda'] ?? $b['id_almacen_default'] ?? null) : $u['id_almacen_default'];
         $cambianPermisos = array_key_exists('permisos', $b) || $rol !== $u['rol'];
         $pares = $cambianPermisos && $rol === 'usuario' ? Permisos::normalizar($b['permisos'] ?? [], $idEmpresa) : [];
+        // reenviar los mismos permisos (p. ej. al editar solo el nombre) no cierra la sesion del usuario
+        if ($cambianPermisos && $rol === $u['rol']) {
+            $antes = array_map(fn($r) => $r['modulo'] . '.' . $r['accion'],
+                Db::all('SELECT modulo, accion FROM user_permisos WHERE id_empresa = ? AND id_user = ?', [$idEmpresa, $id]));
+            $despues = array_map(fn($p) => $p[0] . '.' . $p[1], $pares);
+            sort($antes); sort($despues);
+            if ($antes === $despues) $cambianPermisos = false;
+        }
         $invalida = $cambianPermisos || $activo !== $u['is_active'] || $usuario !== $u['usuario'];
 
         Db::begin();

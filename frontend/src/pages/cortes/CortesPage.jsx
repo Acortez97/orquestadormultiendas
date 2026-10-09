@@ -4,10 +4,11 @@ import Swal from 'sweetalert2';
 import { cortesApi, almacenesApi } from '../../services/api/endpoints';
 import { useAuth } from '../../contexts/AuthContext';
 import { printCorte } from '../../utils/corte';
+import { hoyLocal, aFecha } from '../../utils/fechas';
 
 const money = (n) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n || 0);
-const fecha = (d) => (d ? new Date(d).toLocaleDateString('es-MX') : '');
+const fecha = (d) => (d ? aFecha(d).toLocaleDateString('es-MX') : '');
 
 const FORMA_LABEL = {
   efectivo: 'Efectivo',
@@ -53,7 +54,7 @@ const ordenLista = (a, b) => {
   return na - nb;
 };
 
-const hoy = () => new Date().toISOString().slice(0, 10);
+const hoy = hoyLocal;   // dia LOCAL (toISOString daria el dia siguiente despues de las 18:00)
 
 export default function CortesPage() {
   const [almacenes, setAlmacenes] = useState([]);
@@ -124,9 +125,9 @@ export default function CortesPage() {
   const clavesLista = Object.keys(porLista).sort(ordenLista);
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="mx-auto max-w-7xl space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">Cortes de caja</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Corte de caja</h1>
       </div>
 
       <div className="card p-4">

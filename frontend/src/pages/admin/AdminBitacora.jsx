@@ -18,7 +18,7 @@ export default function AdminBitacora() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-slate-800">Bitácora general</h1>
+      <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Bitácora general</h1>
       <div className="flex flex-wrap gap-2">
         <select className="input-base w-56" value={filtro.solo_plataforma ? 'plataforma' : filtro.id_tienda}
           onChange={(e) => setFiltro({ ...filtro, id_tienda: e.target.value === 'plataforma' ? '' : e.target.value, solo_plataforma: e.target.value === 'plataforma' ? '1' : '' })}>

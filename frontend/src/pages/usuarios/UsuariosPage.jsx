@@ -3,7 +3,7 @@ import Swal from 'sweetalert2';
 import { PlusIcon } from '@heroicons/react/24/outline';
 import DataTable from '../../components/common/DataTable';
 import Modal from '../../components/common/Modal';
-import PermisosEditor from '../../components/common/PermisosEditor';
+import PermisosEditor, { soloHabilitados } from '../../components/common/PermisosEditor';
 import { usuariosTiendaApi, almacenesApi } from '../../services/api/endpoints';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -41,7 +41,7 @@ export default function UsuariosPage() {
 
   const guardar = async () => {
     try {
-      const data = { ...form };
+      const data = { ...form, permisos: soloHabilitados(form.permisos, modulos) };
       if (editId) delete data.password;
       if (editId) await usuariosTiendaApi.actualizar(editId, data); else await usuariosTiendaApi.crear(data);
       setOpen(false);
@@ -85,10 +85,10 @@ export default function UsuariosPage() {
   ];
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="mx-auto max-w-7xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Usuarios de la tienda</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Usuarios y permisos</h1>
           <p className="text-sm text-slate-500">Los correos de acceso terminan en <b>@{dominio}</b>. Los administradores los gestiona el administrador general.</p>
         </div>
         <button className="btn-primary" onClick={() => abrir(null)}><PlusIcon className="w-4 h-4" /> Nuevo usuario</button>

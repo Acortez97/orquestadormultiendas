@@ -42,6 +42,7 @@ CREATE TABLE empresas (
   pin_lista_alta_at DATETIME     DEFAULT NULL,
   notas             TEXT         DEFAULT NULL,
   aviso_pago        VARCHAR(500) DEFAULT NULL,      -- aviso de pago pendiente que pone el superadmin (NULL = sin aviso)
+  color             CHAR(7)      DEFAULT NULL,      -- color de la tienda en la interfaz (#RRGGBB; NULL = el de la plataforma)
   is_active         ENUM('Si','No') NOT NULL DEFAULT 'Si',
   created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -824,6 +825,7 @@ CREATE TABLE proveedor_movimientos (
   id_banco      INT DEFAULT NULL,
   forma         VARCHAR(20) DEFAULT NULL,
   id_almacen    INT DEFAULT NULL,      -- caja de la que salio un pago en efectivo
+  tipo_cambio   DECIMAL(12,4) DEFAULT NULL,   -- pago en otra moneda que la caja / cuenta de origen
   ref_tipo      VARCHAR(30) DEFAULT NULL,
   id_referencia INT DEFAULT NULL,
   created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -913,7 +915,7 @@ CREATE TABLE devoluciones (
   id_cliente    INT DEFAULT NULL,
   id_almacen    INT DEFAULT NULL,
   total         DECIMAL(14,2) NOT NULL DEFAULT 0,
-  destino_saldo ENUM('monedero','cxc') NOT NULL DEFAULT 'monedero',
+  destino_saldo ENUM('monedero','cxc','mixto') NOT NULL DEFAULT 'monedero',   -- mixto: parte baja la deuda, parte al monedero
   id_usuario    INT DEFAULT NULL,
   created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uq_dev_emp_id (id_empresa, id),

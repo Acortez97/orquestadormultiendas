@@ -91,6 +91,11 @@ foreach (glob(__DIR__ . '/lib/controllers/*.php') as $f) require $f;
 //   'plataforma'       solo superadmin (panel de administracion general)
 // :x = parametro (ids opacos); {tipo} = comodin de catalogo
 $INV_VER = ['almacen.ver', 'ventas.crear', 'apartados.crear', 'traspasos.crear', 'compras.crear', 'devoluciones.crear'];
+// clientes (datos personales y saldos) y empleados (contacto y % de comision): solo pantallas que los usan
+$CLI_VER = ['clientes.ver', 'ventas.ver', 'ventas.crear', 'apartados.ver', 'apartados.crear', 'devoluciones.ver', 'devoluciones.crear',
+            'finanzas.ver', 'reportes.ver', 'cortes.ver'];
+$EMP_VER = ['empleados.ver', 'ventas.crear', 'apartados.ver', 'apartados.crear', 'comisiones.ver', 'reportes.ver',
+            'clientes.crear', 'clientes.editar'];
 $routes = [
     // Auth / sesion
     ['POST',   '/auth/login',                        'AuthController::login',          'publico'],
@@ -140,15 +145,15 @@ $routes = [
     ['DELETE', '/articulos/:id',              'ArticuloController::eliminar',   'catalogos.eliminar'],
 
     // Clientes
-    ['GET',    '/clientes',                   'ClienteController::listar',           'tienda'],
-    ['GET',    '/clientes/:id',               'ClienteController::obtener',          'tienda'],
+    ['GET',    '/clientes',                   'ClienteController::listar',           $CLI_VER],
+    ['GET',    '/clientes/:id',               'ClienteController::obtener',          $CLI_VER],
     ['POST',   '/clientes',                   'ClienteController::crear',            'clientes.crear'],
     ['PUT',    '/clientes/:id',               'ClienteController::actualizar',       'clientes.editar'],
     ['PATCH',  '/clientes/:id/autorizar-credito', 'ClienteController::autorizarCredito', 'clientes.autorizar_credito'],
     ['DELETE', '/clientes/:id',               'ClienteController::eliminar',         'clientes.eliminar'],
 
     // Empleados
-    ['GET',    '/empleados',                  'EmpleadoController::listar',     'tienda'],
+    ['GET',    '/empleados',                  'EmpleadoController::listar',     $EMP_VER],
     ['POST',   '/empleados',                  'EmpleadoController::crear',      'empleados.crear'],
     ['PUT',    '/empleados/:id',              'EmpleadoController::actualizar', 'empleados.editar'],
     ['DELETE', '/empleados/:id',              'EmpleadoController::eliminar',   'empleados.eliminar'],
@@ -262,6 +267,13 @@ $routes = [
     // Configuracion de la tienda (PIN listas 4/5)
     ['GET',    '/config-sistema/pin-lista-alta', 'ConfigController::estadoPin',  ['configuracion.ver', 'clientes.crear', 'clientes.editar']],
     ['PUT',    '/config-sistema/pin-lista-alta', 'ConfigController::cambiarPin', 'configuracion.editar'],
+    ['PUT',    '/config-sistema/color',          'ConfigController::cambiarColor', 'configuracion.editar'],
+    // Carga masiva (Excel / CSV): revisar y aplicar
+    ['POST',   '/importar/articulos',            'ImportController::articulos',   'catalogos.crear'],
+    ['POST',   '/importar/existencias',          'ImportController::existencias', 'almacen.ajustar'],
+    // Inicio de la tienda: resumen del dia y pendientes (cada dato segun permisos)
+    ['GET',    '/tienda/hoy',                    'TiendaController::hoy',        'tienda'],
+    ['GET',    '/tienda/pendientes',             'TiendaController::pendientes', 'tienda'],
 
     // Cortes de caja
     ['GET',    '/cortes/preview',             'CorteController::preview', ['cortes.ver', 'cortes.crear']],
@@ -379,7 +391,14 @@ try {
             'es_superadmin' => $u['rol'] === 'superadmin',
             'token_version' => (int) $u['token_version'],
         ];
+        // contrasena temporal (alta o reset): hasta cambiarla solo puede ver su sesion y cambiarla.
+        // Asi un admin que la reseteo no puede operar como ese usuario. (No aplica al superadmin en soporte.)
+        if ((int) $u['debe_cambiar_password'] === 1 && !$actAs
+            && !in_array($handler, ['AuthController::me', 'AuthController::changePassword'], true)) {
+            throw new ApiError('Debes cambiar tu contrasena antes de continuar', 403, 'DEBE_CAMBIAR_PASSWORD');
+        }
         $ctx['permisos'] = Tenant::hayTienda() ? Permisos::efectivos($ctx['user']) : [];
+        Permisos::$verCostos = Permisos::verCostos($ctx);
 
         // ---- Ids opacos de la ruta y del query string -> ids internos ----
         if (isset($params['id'])) $params['id'] = Tenant::decEntrada($params['id']);

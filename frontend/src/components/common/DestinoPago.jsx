@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 import { bancosApi, terminalesApi } from '../../services/api/endpoints';
+import session from '../../services/session';
 
 // Formas de pago de un cobro y a donde va el dinero:
 //   efectivo -> caja de la tienda | tdc/tdb -> terminal (y su cuenta) | transferencia/cheque -> cuenta
@@ -18,14 +19,27 @@ export const FORMA_LABEL = {
 export const requiereTerminal = (forma) => forma === 'tdc' || forma === 'tdb';
 export const requiereCuenta = (forma) => forma === 'transferencia' || forma === 'cheque';
 
-// Cuentas y terminales se cargan una vez por sesion de pagina
-let cache = null;
+// Cuentas y terminales se cargan una vez por SESION: la cache va ligada al token, asi que al cerrar
+// sesion, entrar con otra tienda o entrar/salir de soporte se vuelven a pedir (nunca se ven las de otra tienda).
+// Los cobros y pagos de la tienda son en pesos: solo se ofrecen cuentas en MXN (y terminales que depositan en ellas).
+let cache = null;   // { token, cuentas, terminales }
+const vigente = () => (cache && cache.token === session.token() ? cache : null);
+const VACIO = { cuentas: [], terminales: [] };
 export function useDestinos() {
-  const [d, setD] = useState(cache || { cuentas: [], terminales: [] });
+  const [d, setD] = useState(vigente() || VACIO);
   useEffect(() => {
-    if (cache) return;
+    if (vigente()) { setD(cache); return undefined; }
+    let vivo = true;
+    const token = session.token();
     Promise.all([bancosApi.listar().catch(() => ({ data: [] })), terminalesApi.listar().catch(() => ({ data: [] }))])
-      .then(([b, t]) => { cache = { cuentas: b.data || [], terminales: t.data || [] }; setD(cache); });
+      .then(([b, t]) => {
+        if (session.token() !== token) return;   // la sesion cambio mientras cargaba
+        const cuentas = (b.data || []).filter((c) => (c.moneda || 'MXN') === 'MXN');
+        const enPesos = new Set(cuentas.map((c) => c._id));
+        cache = { token, cuentas, terminales: (t.data || []).filter((x) => enPesos.has(x.id_banco?._id)) };
+        if (vivo) setD(cache);
+      });
+    return () => { vivo = false; };
   }, []);
   return d;
 }

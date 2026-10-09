@@ -12,6 +12,7 @@ return [
         'pass' => '',
     ],
     'jwt_secret'   => 'PON_AQUI_64_CARACTERES_ALEATORIOS',   // openssl rand -hex 48
+    'migrar_clave' => 'PON_AQUI_OTRA_CLAVE_LARGA',           // para abrir api/migrar.php?clave=... (16+ caracteres)
     'login_domain' => 'levotek.com',
     'debug'        => true,                  // GoDaddy: false
     'cors_origin'  => '*',                   // GoDaddy: '' (mismo dominio)

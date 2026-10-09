@@ -2,8 +2,9 @@
 // ============================================================
 // Orquestador MultiTiendas — Actualizador de base de datos
 //
-//   Navegador: https://TU-DOMINIO/api/migrar.php          (muestra pendientes)
-//              https://TU-DOMINIO/api/migrar.php?go=1     (las aplica)
+//   Navegador: https://TU-DOMINIO/api/migrar.php?clave=TU_CLAVE        (muestra pendientes)
+//              https://TU-DOMINIO/api/migrar.php?clave=TU_CLAVE&go=1   (las aplica)
+//   La clave es 'migrar_clave' de lib/config.local.php (16+ caracteres). Sin ella, el navegador no puede usarlo.
 //   Consola:   php migrar.php [--go]
 //
 // Lleva una base ya instalada a la version actual (ver lib/Migraciones.php).
@@ -35,6 +36,13 @@ function termina(string $msg): void {
 
 $go = $cli ? in_array('--go', $argv ?? [], true) : (($_GET['go'] ?? '') === '1');
 
+// En el navegador exige la clave de config.local.php: si el archivo se queda en el servidor, nadie mas puede usarlo
+$clave = (string) ($cfg['migrar_clave'] ?? '');
+if (!$cli) {
+    if (strlen($clave) < 16) termina("Falta 'migrar_clave' (16+ caracteres) en lib/config.local.php.");
+    if (!hash_equals($clave, (string) ($_GET['clave'] ?? ''))) { http_response_code(404); termina('Clave incorrecta.'); }
+}
+
 try {
     Db::init($cfg['db']);
 } catch (Throwable $e) {
@@ -54,7 +62,7 @@ if (!$go) {
     foreach ($pend as [$n, $d]) linea("Pendiente: $d ($n)", false);
     if ($cli) { echo "Para aplicarlas: php migrar.php --go\n"; exit(0); }
     echo '<p>Haz un respaldo de la base (cPanel → phpMyAdmin → Exportar) antes de continuar.</p>';
-    echo '<p><a style="background:#4f46e5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none" href="?go=1">Aplicar ahora</a></p></body>';
+    echo '<p><a style="background:#4f46e5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none" href="?clave=' . rawurlencode($clave) . '&go=1">Aplicar ahora</a></p></body>';
     exit(0);
 }
 

@@ -1,5 +1,44 @@
-import { Cog6ToothIcon, BuildingOffice2Icon, UserCircleIcon } from '@heroicons/react/24/outline';
+import { useState } from 'react';
+import Swal from 'sweetalert2';
+import { Cog6ToothIcon, BuildingOffice2Icon, UserCircleIcon, SwatchIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../../contexts/AuthContext';
+import { configApi } from '../../services/api/endpoints';
+import SelectorColor, { colorLegible } from '../../components/common/SelectorColor';
+import { aviso } from '../../utils/avisos';
+
+/** Color de la tienda en toda la interfaz (lo ven todos sus usuarios) */
+function Apariencia() {
+  const { user, hasPermiso, refreshUser } = useAuth();
+  const [color, setColor] = useState(user?.tienda?.color || '');
+  const [guardando, setGuardando] = useState(false);
+  const puede = hasPermiso('configuracion.editar');
+  const cambio = (color || '') !== (user?.tienda?.color || '');
+  const guardar = async () => {
+    setGuardando(true);
+    try { await configApi.cambiarColor(color || ''); await refreshUser(); aviso('Color de la tienda actualizado'); }
+    catch (e) { Swal.fire('Error', e.message, 'error'); }
+    finally { setGuardando(false); }
+  };
+  return (
+    <div className="card p-5 sm:p-6">
+      <div className="mb-4 flex items-center gap-3">
+        <div className="rounded-xl bg-primary-50 p-2.5"><SwatchIcon className="h-6 w-6 text-primary-600" /></div>
+        <div>
+          <h2 className="text-lg font-bold">Apariencia</h2>
+          <p className="text-sm text-slate-600">El color de tu tienda en botones, menú y punto de venta. Lo ven todos tus usuarios.</p>
+        </div>
+      </div>
+      {puede ? (
+        <div className="space-y-4">
+          <SelectorColor value={color} onChange={setColor} />
+          <button type="button" className="btn-primary" disabled={!cambio || guardando || (color && !colorLegible(color))} onClick={guardar}>
+            {guardando ? 'Guardando…' : 'Guardar color'}
+          </button>
+        </div>
+      ) : <p className="text-sm text-slate-600">Solo quien puede editar la configuración cambia el color.</p>}
+    </div>
+  );
+}
 
 function Campo({ label, value }) {
   return (
@@ -15,8 +54,8 @@ export default function ConfigPage() {
   const nombreCompleto = user ? `${user.nombre || ''} ${user.apellido || ''}`.trim() : '—';
 
   return (
-    <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-bold text-slate-800">Configuración</h1>
+    <div className="mx-auto max-w-7xl space-y-4">
+      <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Configuración</h1>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Usuario actual */}
@@ -49,6 +88,8 @@ export default function ConfigPage() {
           </div>
         </div>
       </div>
+
+      <Apariencia />
 
       {/* Configuración del sistema (placeholder) */}
       <div className="card p-6">

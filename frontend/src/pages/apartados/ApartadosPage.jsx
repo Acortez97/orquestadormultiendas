@@ -16,10 +16,11 @@ import {
   articulosApi,
   ventasApi,
 } from '../../services/api/endpoints';
+import { aFecha } from '../../utils/fechas';
 
 const money = (n) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n || 0);
-const fecha = (d) => (d ? new Date(d).toLocaleDateString('es-MX') : '');
+const fecha = (d) => (d ? aFecha(d).toLocaleDateString('es-MX') : '');
 
 const FORMAS = [
   { v: 'efectivo', l: 'Efectivo' },
@@ -148,7 +149,10 @@ export default function ApartadosPage() {
       setCot(null);
       return;
     }
-    const lineas = completas.map((l) => ({ id_articulo: l.id_articulo, cantidad: Number(l.cantidad) }));
+    // con su variante: un articulo con color/talla no se cotiza sin ella
+    const lineas = completas.map((l) => ({
+      id_articulo: l.id_articulo, id_color: l.id_color || undefined, id_talla: l.id_talla || undefined, cantidad: Number(l.cantidad),
+    }));
     ventasApi
       .cotizar({ id_cliente: form.id_cliente || undefined, lineas })
       .then((r) => setCot(r.data))
@@ -433,7 +437,8 @@ export default function ApartadosPage() {
       key: 'acciones',
       label: 'Acciones',
       render: (r) => {
-        const activo = ['vigente', 'con_anticipo'].includes(r.estado);
+        // "vencido" sigue vigente en la BD: se puede liquidar, abonar o cancelar (libera lo apartado)
+        const activo = ['vigente', 'con_anticipo', 'vencido'].includes(r.estado);
         return (
           <div className="flex flex-wrap gap-1.5">
             <button onClick={() => abrirDetalle(r)} className="btn-ghost p-1.5 text-sky-600" title="Ver detalle del apartado">
@@ -469,9 +474,9 @@ export default function ApartadosPage() {
   ];
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="mx-auto max-w-7xl space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">Apartados</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Apartados</h1>
         {hasPermiso('apartados.crear') && (
           <button onClick={abrirForm} className="btn-primary flex items-center gap-1.5">
             <PlusIcon className="w-4 h-4" /> Nuevo apartado

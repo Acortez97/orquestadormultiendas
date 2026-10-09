@@ -18,6 +18,21 @@ class Migraciones
                 fn(PDO $db) => self::existeColumna($db, 'empresas', 'aviso_pago'),
                 ["ALTER TABLE empresas ADD COLUMN aviso_pago VARCHAR(500) DEFAULT NULL AFTER notas"],
             ],
+            '2026-10-09_color_tienda' => [
+                'Color de la tienda en la interfaz (empresas.color)',
+                fn(PDO $db) => self::existeColumna($db, 'empresas', 'color'),
+                ["ALTER TABLE empresas ADD COLUMN color CHAR(7) DEFAULT NULL AFTER aviso_pago"],
+            ],
+            '2026-10-08_tipo_cambio_cxp' => [
+                'Tipo de cambio en pagos a proveedor (proveedor_movimientos.tipo_cambio)',
+                fn(PDO $db) => self::existeColumna($db, 'proveedor_movimientos', 'tipo_cambio'),
+                ["ALTER TABLE proveedor_movimientos ADD COLUMN tipo_cambio DECIMAL(12,4) DEFAULT NULL AFTER id_almacen"],
+            ],
+            '2026-10-08_devolucion_mixta' => [
+                'Devolucion repartida entre deuda y monedero (devoluciones.destino_saldo = mixto)',
+                fn(PDO $db) => self::columnaAdmite($db, 'devoluciones', 'destino_saldo', "'mixto'"),
+                ["ALTER TABLE devoluciones MODIFY COLUMN destino_saldo ENUM('monedero','cxc','mixto') NOT NULL DEFAULT 'monedero'"],
+            ],
         ];
     }
 
@@ -40,6 +55,14 @@ class Migraciones
         $p = [];
         foreach (self::lista() as $nombre => [$desc, $yaEsta]) if (!$yaEsta($db)) $p[] = [$nombre, $desc];
         return $p;
+    }
+
+    /** El tipo de la columna (p. ej. un ENUM) contiene $texto */
+    private static function columnaAdmite(PDO $db, string $tabla, string $columna, string $texto): bool
+    {
+        $st = $db->prepare('SELECT column_type FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?');
+        $st->execute([$tabla, $columna]);
+        return strpos((string) $st->fetchColumn(), $texto) !== false;
     }
 
     private static function existeColumna(PDO $db, string $tabla, string $columna): bool

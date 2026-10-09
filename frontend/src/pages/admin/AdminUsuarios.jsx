@@ -4,7 +4,7 @@ import Swal from 'sweetalert2';
 import { PlusIcon } from '@heroicons/react/24/outline';
 import DataTable from '../../components/common/DataTable';
 import Modal from '../../components/common/Modal';
-import PermisosEditor from '../../components/common/PermisosEditor';
+import PermisosEditor, { soloHabilitados } from '../../components/common/PermisosEditor';
 import { plataformaApi } from '../../services/api/endpoints';
 
 // Usuarios de todas las tiendas. Aqui el superadmin crea admins de tienda y ajusta cualquier usuario.
@@ -50,7 +50,7 @@ export default function AdminUsuarios() {
 
   const guardar = async () => {
     try {
-      const data = { ...form, permisos: form.rol === 'usuario' ? form.permisos : {} };
+      const data = { ...form, permisos: form.rol === 'usuario' ? soloHabilitados(form.permisos, modulosTienda) : {} };
       if (editar) {
         delete data.password;
         await plataformaApi.editarUsuario(editar._id, data);
@@ -98,7 +98,7 @@ export default function AdminUsuarios() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-slate-800">Usuarios</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Usuarios</h1>
         <div className="flex gap-2">
           <select className="input-base w-64" value={tiendaSel} onChange={(e) => setParams(e.target.value ? { tienda: e.target.value } : {})}>
             <option value="">Todas las tiendas</option>

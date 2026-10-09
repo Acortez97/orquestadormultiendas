@@ -114,7 +114,8 @@ class DevolucionController
         $vendidas = [];
         foreach (Db::all('SELECT * FROM venta_lineas WHERE id_empresa = ? AND id_venta = ?', [Tenant::id(), $v['id']]) as $l) {
             $k = self::clave((int) $l['id_articulo'], $l['id_valor1'], $l['id_valor2']);
-            $vendidas[$k] = $vendidas[$k] ?? ['cantidad' => 0.0, 'precio' => (float) $l['precio_unitario'], 'codigo' => $l['codigo'], 'descripcion' => $l['descripcion']];
+            $vendidas[$k] = $vendidas[$k] ?? ['cantidad' => 0.0, 'precio' => (float) $l['precio_unitario'], 'codigo' => $l['codigo'],
+                                              'descripcion' => $l['descripcion'], 'comisiona' => (bool) $l['comisiona']];
             $vendidas[$k]['cantidad'] += (float) $l['cantidad'];
         }
         $yaDev = self::yaDevuelto((int) $v['id']);
@@ -132,7 +133,7 @@ class DevolucionController
             $total += $importe;
             $out[] = ['id_articulo' => $idArt, 'v1' => Variantes::norm($ln['id_color'] ?? null), 'v2' => Variantes::norm($ln['id_talla'] ?? null),
                       'codigo' => $vendidas[$k]['codigo'], 'descripcion' => $vendidas[$k]['descripcion'], 'cantidad' => $cant,
-                      'precio_unitario' => $vendidas[$k]['precio'], 'importe' => $importe];
+                      'precio_unitario' => $vendidas[$k]['precio'], 'importe' => $importe, 'comisiona' => $vendidas[$k]['comisiona']];
         }
         if (!$out) throw new ApiError('Sin lineas a devolver', 400, 'VALIDATION');
         return [$out, round($total, 2)];
@@ -146,7 +147,10 @@ class DevolucionController
         $v = self::ventaPorFolio(trim((string) ($b['folio_venta'] ?? '')), true);
         self::validarPlazo($v);
         [$lineas, $total] = self::lineasDevueltas($v, is_array($b['lineas'] ?? null) ? $b['lineas'] : []);
-        $destino = (float) $v['monto_credito'] > 0 ? 'cxc' : 'monedero';   // venta sin cliente: solo reingresa mercancia
+        // Lo devuelto primero baja la deuda que dejo ESTA venta a credito (sin dejar el saldo en negativo);
+        // el resto va al monedero. Venta sin cliente: solo reingresa mercancia.
+        [$aCxc, $aMonedero] = self::repartoDevolucion($emp, $v, $total);
+        $destino = $aCxc > 0 && $aMonedero > 0 ? 'mixto' : ($aCxc > 0 ? 'cxc' : 'monedero');
         $idUser = $ctx['user']['id'];
         $folio = Db::folio($emp, 'devolucion', 'DEV', 5);
         $devId = Db::insert('INSERT INTO devoluciones (id_empresa, folio, fecha, id_venta, id_cliente, id_almacen, total, destino_saldo, id_usuario)
@@ -159,13 +163,39 @@ class DevolucionController
             VentaController::afectarInventario($emp, $l['id_articulo'], $l['v1'], $l['v2'], (int) $v['id_almacen'], $l['cantidad'], 1,
                 'devolucion', 'Devolucion ' . $folio, 'Devolucion', $devId, $idUser, $folio);
         }
-        if ($v['id_cliente'] && $total > 0) {
-            if ($destino === 'cxc') Ledger::clienteMov($emp, (int) $v['id_cliente'], 'devolucion', 'Devolucion ' . $folio, $total, 'abono', 'MXN', null, 'Devolucion', $devId);
-            else Ledger::monederoMov($emp, (int) $v['id_cliente'], $total, 'deposito', 'Devolucion ' . $folio, 'Devolucion', $devId);
+        if ($v['id_cliente']) {
+            if ($aCxc > 0)      Ledger::clienteMov($emp, (int) $v['id_cliente'], 'devolucion', 'Devolucion ' . $folio, $aCxc, 'abono', 'MXN', null, 'Devolucion', $devId);
+            if ($aMonedero > 0) Ledger::monederoMov($emp, (int) $v['id_cliente'], $aMonedero, 'deposito', 'Devolucion ' . $folio, 'Devolucion', $devId);
         }
+        ComisionController::ajustarVenta($emp, (int) $v['id'], -1 * self::baseComisionable($lineas));
         Db::commit();
         Ledger::audit($ctx, 'crear', 'Devolucion', $devId, $folio);
         Http::created(self::fmtDevolucion($emp, $devId), 'Devolucion');
+    }
+
+    /** [a CxC, a monedero] de una devolucion de $total sobre la venta $v (bloquea al cliente) */
+    private static function repartoDevolucion(int $emp, array $v, float $total): array
+    {
+        if (!$v['id_cliente'] || $total <= 0) return [0.0, 0.0];
+        $aCxc = 0.0;
+        if ((float) $v['monto_credito'] > 0) {
+            $c = Db::one('SELECT saldo_credito FROM clientes WHERE id = ? AND id_empresa = ? FOR UPDATE', [(int) $v['id_cliente'], $emp]);
+            $yaAbonado = (float) Db::one(
+                "SELECT COALESCE(SUM(cm.monto), 0) s FROM cliente_movimientos cm
+                 JOIN devoluciones d ON d.id_empresa = cm.id_empresa AND d.id = cm.id_referencia
+                 WHERE cm.id_empresa = ? AND cm.ref_tipo = 'Devolucion' AND cm.efecto = 'abono' AND d.id_venta = ?", [$emp, (int) $v['id']])['s'];
+            $pendienteVenta = (float) $v['monto_credito'] - $yaAbonado;
+            $aCxc = round(max(0, min($total, $pendienteVenta, (float) $c['saldo_credito'])), 2);
+        }
+        return [$aCxc, round($total - $aCxc, 2)];
+    }
+
+    /** Importe de las lineas que pagan comision */
+    private static function baseComisionable(array $lineas): float
+    {
+        $s = 0.0;
+        foreach ($lineas as $l) if (!empty($l['comisiona'])) $s += (float) $l['importe'];
+        return round($s, 2);
     }
 
     private static function fmtLineas(array $filas): array
@@ -214,6 +244,7 @@ class DevolucionController
 
         Db::begin();
         $v = self::ventaPorFolio(trim((string) ($b['folio_venta'] ?? '')), true);
+        self::validarPlazo($v);
         [$devueltas, $totalDev] = self::lineasDevueltas($v, is_array($b['lineas_devueltas'] ?? null) ? $b['lineas_devueltas'] : []);
         $q = Pricing::cotizar($emp, $v['id_cliente'] !== null ? (int) $v['id_cliente'] : null, $nuevasIn, (float) Tenant::empresa()['iva']);
         $totalNuevo = $q['total'];
@@ -223,9 +254,12 @@ class DevolucionController
         if (!in_array($formaDif, ['efectivo', 'tdc', 'tdb', 'transferencia', 'cheque'], true)) throw new ApiError('Forma de pago no valida', 400, 'VALIDATION');
         if ($pagoDif > max(0, $diferencia) + 0.01) throw new ApiError('El pago excede la diferencia a cubrir', 400, 'VALIDATION');
         [$idBancoDif, $idTermDif] = $pagoDif > 0 ? Cobros::destino($formaDif, $b['id_banco'] ?? null, $b['id_terminal'] ?? null) : [null, null];
-        if ($diferencia > 0.0001 && !$v['id_cliente'] && $pagoDif + 0.01 < $diferencia) {
+        if ($diferencia > 0.0001 && !$v['id_cliente'] && $pagoDif + 0.001 < $diferencia) {
             throw new ApiError('Sin cliente, la diferencia se debe pagar completa', 400, 'VALIDATION');
         }
+        // lo que no se paga de la diferencia va a credito: el cliente debe tener credito disponible
+        $restoCredito = $diferencia > 0.0001 ? round($diferencia - $pagoDif, 2) : 0.0;
+        if ($restoCredito > 0.0001) ClienteController::validarCredito($emp, (int) $v['id_cliente'], $restoCredito);
         $idAlm = (int) $v['id_almacen']; $idUser = $ctx['user']['id'];
         $folio = Db::folio($emp, 'cambio', 'CAMB', 5);
         $cambioId = Db::insert('INSERT INTO cambios (id_empresa, folio, fecha, id_venta, id_cliente, id_almacen, total_devuelto, total_nuevo, diferencia, pago_diferencia,
@@ -254,10 +288,14 @@ class DevolucionController
             if ($diferencia < -0.0001) {
                 Ledger::monederoMov($emp, $cid, -1 * $diferencia, 'deposito', 'Cambio ' . $folio, 'Cambio', $cambioId);   // a favor del cliente
             } elseif ($diferencia > 0.0001) {
-                $resto = round($diferencia - $pagoDif, 2);   // lo no pagado va a su cuenta por cobrar
-                if ($resto > 0.0001) Ledger::clienteMov($emp, $cid, 'cambio', 'Cambio ' . $folio . ' (saldo)', $resto, 'cargo', 'MXN', null, 'Cambio', $cambioId);
+                // lo no pagado va a su cuenta por cobrar
+                if ($restoCredito > 0.0001) Ledger::clienteMov($emp, $cid, 'cambio', 'Cambio ' . $folio . ' (saldo)', $restoCredito, 'cargo', 'MXN', null, 'Cambio', $cambioId);
             }
         }
+        // comision: la base cambia por lo nuevo (todo comisiona) menos lo devuelto que comisionaba
+        $baseNueva = 0.0;
+        foreach ($q['lineas'] as $l) if (!empty($l['comisiona'])) $baseNueva += (float) $l['importe'];
+        ComisionController::ajustarVenta($emp, (int) $v['id'], $baseNueva - self::baseComisionable($devueltas));
         Db::commit();
         Ledger::audit($ctx, 'crear', 'Cambio', $cambioId, $folio);
         Http::created(self::fmtCambio($emp, $cambioId), 'Cambio');

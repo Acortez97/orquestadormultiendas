@@ -3,18 +3,23 @@ import Swal from 'sweetalert2';
 import DataTable from '../../components/common/DataTable';
 import Modal from '../../components/common/Modal';
 import { cuentasProveedorApi, bancosApi, almacenesApi } from '../../services/api/endpoints';
+import { useAuth } from '../../contexts/AuthContext';
+import { aFecha } from '../../utils/fechas';
+import { aviso } from '../../utils/avisos';
 
 const money = (n, c = 'MXN') =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: c }).format(Number(n || 0));
-const fecha = (d) => (d ? new Date(d).toLocaleDateString('es-MX') : '');
+const fecha = (d) => (d ? aFecha(d).toLocaleDateString('es-MX') : '');
 
 export default function CuentasProveedorPage() {
+  const { hasPermiso } = useAuth();
+  const puedePagar = hasPermiso('finanzas.crear');
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [bancos, setBancos] = useState([]);
   const [almacenes, setAlmacenes] = useState([]);
   // el pago sale de la caja de un almacen (efectivo) o de una cuenta (transferencia / cheque)
-  const pagoVacio = { monto: '', moneda: 'MXN', concepto: 'Pago a proveedor', forma: 'transferencia', id_banco: '', id_almacen: '' };
+  const pagoVacio = { monto: '', moneda: 'MXN', concepto: 'Pago a proveedor', forma: 'transferencia', id_banco: '', id_almacen: '', tipo_cambio: '' };
 
   const [prov, setProv] = useState(null);
   const [movs, setMovs] = useState([]);
@@ -26,7 +31,9 @@ export default function CuentasProveedorPage() {
     setLoading(true);
     try {
       const res = await cuentasProveedorApi.listar();
-      setData(Array.isArray(res?.data) ? res.data : []);
+      const lista = Array.isArray(res?.data) ? res.data : [];
+      setData(lista);
+      return lista;
     } catch (err) {
       Swal.fire('Error', err?.message || 'No se pudieron cargar las cuentas', 'error');
     } finally {
@@ -55,9 +62,17 @@ export default function CuentasProveedorPage() {
     }
   }
 
+  // moneda de la caja / cuenta de donde sale el dinero; si no coincide con la del pago se pide el tipo de cambio
+  const monedaOrigen = pago.forma === 'efectivo' ? 'MXN' : (bancos.find((b) => b._id === pago.id_banco)?.moneda || 'MXN');
+  const pideTC = (pago.forma === 'efectivo' || !!pago.id_banco) && monedaOrigen !== pago.moneda;
+  const montoSalida = pideTC && Number(pago.tipo_cambio) > 0
+    ? (pago.moneda === 'USD' ? Number(pago.monto || 0) * Number(pago.tipo_cambio) : Number(pago.monto || 0) / Number(pago.tipo_cambio))
+    : null;
+
   async function registrarPago(e) {
     e.preventDefault();
     if (!(Number(pago.monto) > 0)) return Swal.fire('Importe inválido', 'Captura un pago mayor a cero.', 'warning');
+    if (pideTC && !(Number(pago.tipo_cambio) > 0)) return Swal.fire('Falta el tipo de cambio', `El pago es en ${pago.moneda} y sale de ${pago.forma === 'efectivo' ? 'la caja (pesos)' : `una cuenta en ${monedaOrigen}`}.`, 'warning');
     if (pago.forma === 'efectivo' && !pago.id_almacen) return Swal.fire('Falta la caja', 'Indica de qué tienda sale el efectivo.', 'warning');
     if (pago.forma !== 'efectivo' && !pago.id_banco) return Swal.fire('Falta la cuenta', 'Indica de qué cuenta sale el pago.', 'warning');
     setSaving(true);
@@ -69,12 +84,16 @@ export default function CuentasProveedorPage() {
         concepto: pago.concepto || 'Pago a proveedor',
         forma: pago.forma,
         ...(pago.forma === 'efectivo' ? { id_almacen: pago.id_almacen } : { id_banco: pago.id_banco }),
+        ...(pideTC ? { tipo_cambio: Number(pago.tipo_cambio) } : {}),
       });
       const res = await cuentasProveedorApi.movimientos(prov._id);
       setMovs(res.data || []);
       setPago(pagoVacio);
-      cargar();
-      Swal.fire({ icon: 'success', title: 'Pago registrado', timer: 1400, showConfirmButton: false });
+      // refresca la lista y el saldo del encabezado del proveedor abierto
+      const lista = await cargar();
+      const actual = (lista || []).find((x) => x._id === prov._id);
+      if (actual) setProv(actual);
+      aviso('Pago registrado');
     } catch (err) {
       Swal.fire('Error', err?.message || 'No se pudo registrar el pago', 'error');
     } finally {
@@ -94,8 +113,8 @@ export default function CuentasProveedorPage() {
   ];
 
   return (
-    <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-bold text-slate-800">Cuentas por pagar (proveedores)</h1>
+    <div className="mx-auto max-w-7xl space-y-4">
+      <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Cuentas por pagar</h1>
       <p className="text-sm text-slate-500">Haz clic en un proveedor para ver su estado de cuenta y registrar un pago.</p>
       <DataTable
         columns={columns}
@@ -121,6 +140,7 @@ export default function CuentasProveedorPage() {
               <span className="text-slate-500">Saldo USD: <b className={Number(prov?.saldos?.USD?.saldo) > 0 ? 'text-rose-600' : 'text-emerald-600'}>{money(prov?.saldos?.USD?.saldo, 'USD')}</b></span>
             </div>
 
+            {puedePagar && (
             <form onSubmit={registrarPago} className="card p-4 space-y-3">
               <p className="text-sm font-semibold text-slate-700">Registrar pago a proveedor</p>
               <div className="grid gap-3 md:grid-cols-4">
@@ -162,16 +182,27 @@ export default function CuentasProveedorPage() {
                       <label className="block text-xs font-medium text-slate-500 mb-1">Sale de la cuenta</label>
                       <select className="input-base" value={pago.id_banco} onChange={(e) => setPago({ ...pago, id_banco: e.target.value })}>
                         <option value="">—</option>
-                        {bancos.map((b) => <option key={b._id} value={b._id}>{b.nombre}</option>)}
+                        {bancos.map((b) => <option key={b._id} value={b._id}>{b.nombre} ({b.moneda || 'MXN'})</option>)}
                       </select>
                     </>
                   )}
                 </div>
+                {pideTC && (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Tipo de cambio (pesos por dólar) *</label>
+                    <input type="number" min="0" step="0.0001" className="input-base" value={pago.tipo_cambio}
+                      onChange={(e) => setPago({ ...pago, tipo_cambio: e.target.value })} />
+                    {montoSalida !== null && (
+                      <p className="text-xs text-slate-500 mt-1">Saldrán {money(montoSalida, monedaOrigen)} de {pago.forma === 'efectivo' ? 'la caja' : 'la cuenta'}</p>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="flex justify-end">
                 <button type="submit" className="btn-primary" disabled={saving}>{saving ? 'Guardando…' : 'Registrar pago'}</button>
               </div>
             </form>
+            )}
 
             <div className="card overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-200 text-sm font-semibold text-slate-700">Movimientos</div>
@@ -195,7 +226,7 @@ export default function CuentasProveedorPage() {
                       movs.map((m) => (
                         <tr key={m._id}>
                           <td className="px-4 py-2 text-slate-600">{fecha(m.fecha)}</td>
-                          <td className="px-4 py-2 text-slate-700">{m.concepto}</td>
+                          <td className="px-4 py-2 text-slate-700">{m.concepto}{m.tipo_cambio ? ` (TC ${m.tipo_cambio})` : ''}</td>
                           <td className="px-4 py-2 text-slate-600">{m.moneda || 'MXN'}</td>
                           <td className="px-4 py-2 text-right text-rose-600">{m.tipo === 'cargo' ? money(m.monto, m.moneda) : ''}</td>
                           <td className="px-4 py-2 text-right text-emerald-600">{m.tipo !== 'cargo' ? money(m.monto, m.moneda) : ''}</td>

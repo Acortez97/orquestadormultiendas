@@ -152,12 +152,28 @@ class Tenant
             || substr($clave, -4) === '_por' || in_array($clave, self::CLAVES_ID, true);
     }
 
+    /**
+     * Valida el color de una tienda: '#RRGGBB' oscuro lo suficiente para texto blanco encima (contraste >= 4.5:1).
+     * ''/null = sin color propio. Devuelve el color normalizado o null.
+     */
+    public static function colorTienda($c): ?string
+    {
+        if ($c === null || trim((string) $c) === '') return null;
+        $c = strtoupper(trim((string) $c));
+        if (!preg_match('/^#[0-9A-F]{6}$/', $c)) throw new ApiError('El color debe ser hexadecimal, p. ej. #1F4FD1', 400, 'VALIDATION');
+        $lin = function (int $v): float { $s = $v / 255; return $s <= 0.03928 ? $s / 12.92 : (($s + 0.055) / 1.055) ** 2.4; };
+        $l = 0.2126 * $lin(hexdec(substr($c, 1, 2))) + 0.7152 * $lin(hexdec(substr($c, 3, 2))) + 0.0722 * $lin(hexdec(substr($c, 5, 2)));
+        if (1.05 / ($l + 0.05) < 4.5) throw new ApiError('Elige un color mas oscuro: el texto blanco encima no se leeria bien', 400, 'VALIDATION');
+        return $c;
+    }
+
     /** Decodifica un valor de id que viene del front. ''/null/'0' = vacio. Invalido -> 404. */
     public static function decEntrada($v)
     {
         if ($v === null || $v === '' || $v === 0 || $v === '0' || $v === false) return $v === false ? null : $v;
         if (is_array($v)) return self::esAsociativo($v) ? self::entrada($v) : array_map([self::class, 'decEntrada'], $v);
-        if (!is_string($v) && !is_int($v)) return $v;
+        // un id del front siempre es un id opaco (texto); 7.0, true u objetos nunca llegan como id interno
+        if (!is_string($v) && !is_int($v)) throw new ApiError('Registro no encontrado', 404, 'NOT_FOUND');
         $id = self::dec((string) $v);
         if ($id === null) throw new ApiError('Registro no encontrado', 404, 'NOT_FOUND');
         return $id;

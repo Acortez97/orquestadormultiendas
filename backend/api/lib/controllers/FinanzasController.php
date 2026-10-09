@@ -25,9 +25,14 @@ class FinanzasController
     public static function bancosListar(array $p, array $ctx): void
     {
         $todas = ($_GET['is_active'] ?? '') === 'todos';
-        Http::ok(array_map([self::class, 'fmtBanco'], Db::all(
+        $rows = array_map([self::class, 'fmtBanco'], Db::all(
             "SELECT b.*, (SELECT COUNT(*) FROM terminales t WHERE t.id_empresa = b.id_empresa AND t.id_banco = b.id AND t.is_active = 'Si') terminales
-             FROM bancos b WHERE b.id_empresa = ?" . ($todas ? '' : " AND b.is_active = 'Si'") . ' ORDER BY b.nombre', [Tenant::id()])));
+             FROM bancos b WHERE b.id_empresa = ?" . ($todas ? '' : " AND b.is_active = 'Si'") . ' ORDER BY b.nombre', [Tenant::id()]));
+        // quien solo cobra (cajero) elige la cuenta destino: no ve saldos, numero de cuenta ni CLABE
+        if (!Permisos::tiene($ctx, 'finanzas.ver') && !Permisos::tiene($ctx, 'compras.pagar')) {
+            $rows = array_map(fn($b) => ['_id' => $b['_id'], 'nombre' => $b['nombre'], 'moneda' => $b['moneda'], 'is_active' => $b['is_active']], $rows);
+        }
+        Http::ok($rows);
     }
 
     public static function bancosCrear(array $p, array $ctx): void
@@ -100,12 +105,15 @@ class FinanzasController
         $idUser = $ctx['user']['id'];
         Db::begin();
         if ($tipo === 'deposito') {
-            $saldoCaja = self::saldoCaja($emp, $idAlm);
-            if ($monto > $saldoCaja + 0.01) throw new ApiError("La caja solo tiene $saldoCaja en efectivo", 400, 'VALIDATION');
+            if ($bn['moneda'] !== 'MXN') throw new ApiError('El efectivo de caja (pesos) solo se deposita en cuentas en pesos', 400, 'VALIDATION');
+            $saldoCaja = round(self::saldoCaja($emp, $idAlm, true), 2);
+            if ($monto > $saldoCaja + 0.001) throw new ApiError("La caja solo tiene $saldoCaja en efectivo", 400, 'VALIDATION');
             Ledger::cajaMov($emp, $idAlm, 'egreso', $monto, $concepto . ' a ' . $bn['nombre'], 'Deposito', (int) $bn['id'], $idUser);
             Ledger::bancoMov($emp, (int) $bn['id'], 'ingreso', $monto, $concepto, 'efectivo', null, $idAlm, 'Deposito', null, $idUser);
         } elseif ($tipo === 'retiro') {
-            if ($monto > (float) $bn['saldo_actual'] + 0.01) throw new ApiError('La cuenta no tiene saldo suficiente', 400, 'VALIDATION');
+            $saldoCuenta = (float) Db::one('SELECT saldo_actual FROM bancos WHERE id = ? AND id_empresa = ? FOR UPDATE', [(int) $bn['id'], $emp])['saldo_actual'];
+            if ($bn['moneda'] !== 'MXN') throw new ApiError('Solo se retira efectivo a caja de cuentas en pesos', 400, 'VALIDATION');
+            if ($monto > $saldoCuenta + 0.001) throw new ApiError('La cuenta no tiene saldo suficiente', 400, 'VALIDATION');
             Ledger::bancoMov($emp, (int) $bn['id'], 'egreso', $monto, $concepto, 'efectivo', null, $idAlm, 'Retiro', null, $idUser);
             Ledger::cajaMov($emp, $idAlm, 'ingreso', $monto, $concepto . ' de ' . $bn['nombre'], 'Retiro', (int) $bn['id'], $idUser);
         } else {
@@ -168,8 +176,13 @@ class FinanzasController
     }
 
     // ============================== CAJAS (efectivo por almacen) ==============================
-    public static function saldoCaja(int $emp, int $idAlm): float
+    /**
+     * Efectivo de la caja de un almacen. $bloquear = true (dentro de una transaccion) bloquea el almacen
+     * para que dos salidas de efectivo simultaneas no saquen mas de lo que hay.
+     */
+    public static function saldoCaja(int $emp, int $idAlm, bool $bloquear = false): float
     {
+        if ($bloquear) Db::one('SELECT id FROM almacenes WHERE id = ? AND id_empresa = ? FOR UPDATE', [$idAlm, $emp]);
         return (float) Db::one("SELECT COALESCE(SUM(CASE tipo WHEN 'ingreso' THEN monto ELSE -monto END), 0) s
                                 FROM caja_movimientos WHERE id_empresa = ? AND id_almacen = ?", [$emp, $idAlm])['s'];
     }
@@ -215,7 +228,7 @@ class FinanzasController
         if ($concepto === '') throw new ApiError('Indica el concepto', 400, 'VALIDATION');
         $emp = Tenant::id();
         Db::begin();
-        if ($tipo === 'egreso' && $monto > self::saldoCaja($emp, $idAlm) + 0.01) throw new ApiError('La caja no tiene ese efectivo', 400, 'VALIDATION');
+        if ($tipo === 'egreso' && $monto > self::saldoCaja($emp, $idAlm, true) + 0.001) throw new ApiError('La caja no tiene ese efectivo', 400, 'VALIDATION');
         Ledger::cajaMov($emp, $idAlm, $tipo, $monto, $concepto, 'Manual', null, $ctx['user']['id']);
         Db::commit();
         Ledger::audit($ctx, $tipo, 'Caja', $idAlm, "$concepto: $monto");
@@ -287,7 +300,7 @@ class FinanzasController
 
         Db::begin();
         $c = Db::one('SELECT saldo_credito FROM clientes WHERE id = ? AND id_empresa = ? FOR UPDATE', [$idCli, $emp]);
-        if ($monto > (float) $c['saldo_credito'] + 0.01) throw new ApiError('El abono excede el saldo del cliente (' . (float) $c['saldo_credito'] . ')', 400, 'VALIDATION');
+        if ($monto > (float) $c['saldo_credito'] + 0.001) throw new ApiError('El abono excede el saldo del cliente (' . (float) $c['saldo_credito'] . ')', 400, 'VALIDATION');
         $movId = Ledger::clienteMov($emp, $idCli, 'abono', $b['concepto'] ?? 'Abono a cuenta', $monto, 'abono', 'MXN', $idBanco, 'Abono', null);
         Db::run('UPDATE cliente_movimientos SET forma = ?, id_terminal = ?, id_almacen = ? WHERE id = ? AND id_empresa = ?', [$forma, $idTerminal, $idAlm, $movId, $emp]);
         Cobros::entrada($emp, $forma, $monto, $idBanco, $idTerminal, $idAlm, 'Abono CxC', 'Abono', $movId, $ctx['user']['id']);
@@ -325,10 +338,15 @@ class FinanzasController
         Http::ok(array_map(fn($m) => [
             '_id' => (int) $m['id'], 'fecha' => $m['fecha'], 'concepto' => $m['concepto'], 'moneda' => $m['moneda'],
             'tipo' => $m['tipo'], 'monto' => (float) $m['monto'], 'forma' => $m['forma'],
+            'tipo_cambio' => $m['tipo_cambio'] !== null ? (float) $m['tipo_cambio'] : null,
         ], Db::all('SELECT * FROM proveedor_movimientos WHERE id_empresa = ? AND id_proveedor = ? ORDER BY fecha DESC, id DESC LIMIT 500', [Tenant::id(), $idProv])));
     }
 
-    /** Pago directo a proveedor: sale de la caja de un almacen (efectivo) o de una cuenta (transferencia / cheque). */
+    /**
+     * Pago directo a proveedor: sale de la caja de un almacen (efectivo) o de una cuenta (transferencia / cheque).
+     * 'moneda' es la de la deuda con el proveedor. Si el dinero sale de una caja / cuenta en otra moneda se pide el
+     * tipo de cambio (pesos por dolar): al proveedor se le abona 'monto' y de la caja / cuenta sale lo convertido.
+     */
     public static function cxpPago(array $p, array $ctx): void
     {
         $b = Http::body();
@@ -339,17 +357,28 @@ class FinanzasController
         $moneda = ($b['moneda'] ?? 'MXN') === 'USD' ? 'USD' : 'MXN';
         $forma = (string) ($b['forma'] ?? (!empty($b['id_banco']) ? 'transferencia' : 'efectivo'));
         if (!in_array($forma, ['efectivo', 'transferencia', 'cheque'], true)) throw new ApiError('Forma de pago no valida (efectivo, transferencia o cheque)', 400, 'VALIDATION');
-        [$idBanco] = Cobros::destino($forma, $b['id_banco'] ?? null);
+        [$idBanco] = Cobros::destino($forma, $b['id_banco'] ?? null, null, null);
         $idAlm = Tenant::owns('almacenes', $b['id_almacen'] ?? $ctx['user']['id_tienda'] ?? null, 'Almacen');
         if ($forma === 'efectivo' && !$idAlm) throw new ApiError('Indica de que caja (almacen) sale el efectivo', 400, 'VALIDATION');
+        $monedaOrigen = $idBanco ? (Db::one('SELECT moneda FROM bancos WHERE id = ? AND id_empresa = ?', [$idBanco, $emp])['moneda'] ?? 'MXN') : 'MXN';
+        $tc = null; $salida = $monto;
+        if ($monedaOrigen !== $moneda) {
+            $tc = num($b['tipo_cambio'] ?? 0);
+            if ($tc <= 0) throw new ApiError("Indica el tipo de cambio: el pago es en $moneda y sale de " . ($idBanco ? "una cuenta en $monedaOrigen" : 'la caja (pesos)'), 400, 'VALIDATION');
+            $salida = round($moneda === 'USD' ? $monto * $tc : $monto / $tc, 2);
+            if ($salida <= 0) throw new ApiError('El monto convertido debe ser mayor a cero', 400, 'VALIDATION');
+        }
+        $concepto = trim((string) ($b['concepto'] ?? '')) ?: 'Pago a proveedor';
+        $conceptoSalida = $tc ? "$concepto ($moneda " . number_format($monto, 2) . " a TC " . rtrim(rtrim(number_format($tc, 4, '.', ''), '0'), '.') . ')' : $concepto;
 
         Db::begin();
-        if ($forma === 'efectivo' && $monto > self::saldoCaja($emp, $idAlm) + 0.01) throw new ApiError('La caja no tiene ese efectivo', 400, 'VALIDATION');
-        $movId = Ledger::proveedorMov($emp, $idProv, 'pago', $b['concepto'] ?? 'Pago a proveedor', $monto, $moneda, $idBanco, 'PagoProv', null);
-        Db::run('UPDATE proveedor_movimientos SET forma = ?, id_almacen = ? WHERE id = ? AND id_empresa = ?', [$forma, $idAlm, $movId, $emp]);
-        Cobros::salida($emp, $forma, $monto, $idBanco, null, $idAlm, 'Pago a proveedor', 'PagoProv', $movId, $ctx['user']['id']);
+        if ($forma === 'efectivo' && $salida > self::saldoCaja($emp, $idAlm, true) + 0.001) throw new ApiError('La caja no tiene ese efectivo', 400, 'VALIDATION');
+        $movId = Ledger::proveedorMov($emp, $idProv, 'pago', $concepto, $monto, $moneda, $idBanco, 'PagoProv', null);
+        Db::run('UPDATE proveedor_movimientos SET forma = ?, id_almacen = ?, tipo_cambio = ? WHERE id = ? AND id_empresa = ?', [$forma, $idAlm, $tc, $movId, $emp]);
+        Cobros::salida($emp, $forma, $salida, $idBanco, null, $idAlm, $conceptoSalida, 'PagoProv', $movId, $ctx['user']['id']);
         Db::commit();
-        Ledger::audit($ctx, 'pago', 'CxP', $idProv, 'Pago ' . $monto . ' ' . $moneda . ' ' . $forma);
-        Http::created(['_id' => $movId, 'id_proveedor' => $idProv, 'monto' => $monto, 'moneda' => $moneda], 'Pago');
+        Ledger::audit($ctx, 'pago', 'CxP', $idProv, 'Pago ' . $monto . ' ' . $moneda . ' ' . $forma . ($tc ? " TC $tc" : ''));
+        Http::created(['_id' => $movId, 'id_proveedor' => $idProv, 'monto' => $monto, 'moneda' => $moneda,
+                       'tipo_cambio' => $tc, 'monto_salida' => $salida, 'moneda_salida' => $monedaOrigen], 'Pago');
     }
 }

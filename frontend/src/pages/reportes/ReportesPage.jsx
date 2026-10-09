@@ -7,12 +7,13 @@ import DataTable from '../../components/common/DataTable';
 import BarChart from '../../components/common/BarChart';
 import ArticuloAutocomplete from '../../components/common/ArticuloAutocomplete';
 import ProductosDashboardView from '../../components/common/ProductosDashboardView';
+import { aFecha } from '../../utils/fechas';
 
 const money = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n || 0);
 const num = (n) => new Intl.NumberFormat('es-MX').format(n || 0);
 const pct = (n) => `${num(n)}%`;
-const fechaCorta = (d) => (d ? new Date(d).toLocaleDateString('es-MX') : '');
-const fechaHora = (d) => (d ? new Date(d).toLocaleString('es-MX') : '');
+const fechaCorta = (d) => (d ? aFecha(d).toLocaleDateString('es-MX') : '');
+const fechaHora = (d) => (d ? aFecha(d).toLocaleString('es-MX') : '');
 const listaLabel = (k) => (String(k).toUpperCase() === 'OFERTA' ? 'Oferta' : `Lista ${k}`);
 
 const ymd = (d) => {
@@ -126,10 +127,10 @@ export default function ReportesPage() {
   }, [reporte, filtros, articulo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="mx-auto max-w-7xl space-y-4">
       <div className="flex items-center gap-2">
         <ChartBarIcon className="w-6 h-6 text-primary-600" />
-        <h1 className="text-2xl font-bold text-slate-800">Reportes</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Reportes</h1>
       </div>
 
       {/* Selector + filtros */}
@@ -304,7 +305,8 @@ function ReporteVentas({ data }) {
   return (
     <div className="space-y-4">
       <Cards items={[
-        ['Total vendido', money(t.total), true], ['# Notas', num(t.num_notas)], ['Prendas', num(t.prendas)],
+        ['Total vendido', money(t.total)], ['Devoluciones', money(t.devoluciones)], ['Cambios (dif.)', money(t.cambios)],
+        ['Venta neta', money(t.neto ?? t.total), true], ['# Notas', num(t.num_notas)], ['Prendas', num(t.prendas)],
         ['Ticket promedio', money(t.ticket_promedio)], ['A crédito', money(t.credito)],
       ]} />
 
@@ -398,7 +400,9 @@ function ReporteCortes({ data }) {
     { key: 'tdc', label: 'T. Crédito', className: 'text-right', render: (r) => money(r.tdc), exportValue: (r) => r.tdc },
     { key: 'tdb', label: 'T. Débito', className: 'text-right', render: (r) => money(r.tdb), exportValue: (r) => r.tdb },
     { key: 'transferencia', label: 'Transfer.', className: 'text-right', render: (r) => money(r.transferencia), exportValue: (r) => r.transferencia },
+    { key: 'cheque', label: 'Cheque', className: 'text-right', render: (r) => money(r.cheque), exportValue: (r) => r.cheque },
     { key: 'monedero', label: 'Monedero', className: 'text-right', render: (r) => money(r.monedero), exportValue: (r) => r.monedero },
+    { key: 'anticipo', label: 'Anticipos previos', className: 'text-right', render: (r) => money(r.anticipo), exportValue: (r) => r.anticipo },
     { key: 'credito', label: 'Crédito', className: 'text-right', render: (r) => money(r.credito), exportValue: (r) => r.credito },
     { key: 'total', label: 'Total', className: 'text-right font-medium', render: (r) => money(r.total), exportValue: (r) => r.total },
   ];
@@ -406,7 +410,8 @@ function ReporteCortes({ data }) {
     <div className="space-y-4">
       <Cards items={[
         ['Total vendido', money(t.total), true], ['Efectivo neto', money(t.efectivo_neto ?? t.efectivo)], ['Cambio devuelto', money(t.cambio_efectivo)],
-        ['Tarjetas', money((t.tdc || 0) + (t.tdb || 0))], ['Transfer.', money(t.transferencia)], ['Crédito', money(t.credito)],
+        ['Tarjetas', money((t.tdc || 0) + (t.tdb || 0))], ['Transfer. y cheques', money((t.transferencia || 0) + (t.cheque || 0))],
+        ['Anticipos previos', money(t.anticipo)], ['Crédito', money(t.credito)],
       ]} />
       <BarChart title={`Total por ${data.agrupar === 'tienda' ? 'tienda' : 'día'}`}
         data={(data.filas || []).map((r) => ({ label: labelClave(r.clave, data.agrupar), value: r.total }))} format={money} />
@@ -531,7 +536,8 @@ function ReporteCompras({ data }) {
   ];
   return (
     <div className="space-y-4">
-      <Cards items={[['Total comprado', money(t.total), true], ['# Compras', num(t.num_compras)], ['Piezas', num(t.piezas)]]} />
+      <Cards items={[['Total comprado', money(t.total), true], ['Aprobadas', money(t.aprobadas)], ['Por aprobar', money(t.por_aprobar)],
+        ['Canceladas (no suman)', money(t.canceladas)], ['# Compras', num(t.num_compras)], ['Piezas', num(t.piezas)]]} />
       <DataTable columns={columns} data={data.filas} exportName="reporte_compras" exportTitle="Compras por periodo" empty="Sin compras en el periodo" />
     </div>
   );

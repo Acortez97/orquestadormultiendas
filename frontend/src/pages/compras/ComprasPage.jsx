@@ -8,9 +8,11 @@ import MatrizColorTalla, { expandirMatriz, sumarMatriz } from '../../components/
 import { comprasApi, proveedoresApi, almacenesApi, articulosApi } from '../../services/api/endpoints';
 import { useAuth } from '../../contexts/AuthContext';
 import DestinoPago, { faltaDestino, destinoPayload } from '../../components/common/DestinoPago';
+import { aFecha } from '../../utils/fechas';
+import { aviso } from '../../utils/avisos';
 
 const money = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n || 0);
-const fecha = (d) => (d ? new Date(d).toLocaleDateString('es-MX') : '');
+const fecha = (d) => (d ? aFecha(d).toLocaleDateString('es-MX') : '');
 
 // Pago a proveedor: efectivo sale de la caja del almacen de la compra; transferencia / cheque, de una cuenta
 const FORMAS_PAGO = [
@@ -32,7 +34,9 @@ const lineaVacia = () => ({ uid: nuevoUid(), art: null, id_articulo: '', codigo:
 const piezasDe = (l) => sumarMatriz(l.cant);
 
 export default function ComprasPage() {
-  const { hasPermiso } = useAuth();
+  const { hasPermiso, user } = useAuth();
+  const ivaTienda = Number(user?.tienda?.iva ?? 0.16);   // la tasa de la tienda (p. ej. 8% en frontera), igual que el servidor
+  const puedePagar = hasPermiso('compras.pagar') || hasPermiso('finanzas.crear');
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -111,7 +115,7 @@ export default function ComprasPage() {
     (acc, l) => acc + piezasDe(l) * (Number(l.costo_unitario) || 0),
     0
   );
-  const totalFormConIva = form.aplica_iva ? totalForm * 1.16 : totalForm;
+  const totalFormConIva = form.aplica_iva ? totalForm * (1 + ivaTienda) : totalForm;
 
   function abrirForm() {
     setEditId(null);
@@ -245,7 +249,7 @@ export default function ComprasPage() {
     if (!isConfirmed) return;
     try {
       await comprasApi.aprobar(row._id);
-      Swal.fire({ icon: 'success', title: 'Compra aprobada', timer: 1600, showConfirmButton: false });
+      aviso('Compra aprobada');
       cargar();
     } catch (err) {
       Swal.fire('Error', err.message, 'error');
@@ -265,7 +269,7 @@ export default function ComprasPage() {
     if (!isConfirmed) return;
     try {
       await comprasApi.eliminar(row._id);
-      Swal.fire({ icon: 'success', title: 'Compra eliminada', timer: 1600, showConfirmButton: false });
+      aviso('Compra eliminada');
       cargar();
     } catch (err) {
       Swal.fire('Error', err.message, 'error');
@@ -308,7 +312,7 @@ export default function ComprasPage() {
       const res = await comprasApi.pagos(pagosCompra._id);
       setPagos(res.data?.docs ?? res.data ?? []);
       setPagoForm({ importe: '', forma_pago: 'efectivo', aplica_iva: false, referencia: '' });
-      Swal.fire({ icon: 'success', title: 'Pago registrado', timer: 1400, showConfirmButton: false });
+      aviso('Pago registrado');
     } catch (err) {
       Swal.fire('Error', err.message, 'error');
     } finally {
@@ -354,7 +358,7 @@ export default function ComprasPage() {
           >
             <EyeIcon className="w-5 h-5" />
           </button>
-          {r.estado !== 'aprobada' && (
+          {r.estado === 'por_aprobar' && hasPermiso('compras.editar') && (
             <button
               className="btn-ghost p-1.5 text-slate-600"
               title="Editar"
@@ -363,7 +367,7 @@ export default function ComprasPage() {
               <PencilSquareIcon className="w-5 h-5" />
             </button>
           )}
-          {r.estado !== 'aprobada' && hasPermiso('compras.aprobar') && (
+          {r.estado === 'por_aprobar' && hasPermiso('compras.aprobar') && (
             <button
               className="btn-ghost p-1.5 text-green-600"
               title="Aprobar"
@@ -385,7 +389,7 @@ export default function ComprasPage() {
           >
             <BanknotesIcon className="w-5 h-5" />
           </button>
-          {r.estado !== 'aprobada' && (
+          {r.estado === 'por_aprobar' && hasPermiso('compras.eliminar') && (
             <button
               className="btn-ghost p-1.5 text-rose-600"
               title="Eliminar"
@@ -400,12 +404,14 @@ export default function ComprasPage() {
   ];
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="mx-auto max-w-7xl space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">Compras</h1>
-        <button className="btn-primary flex items-center gap-2" onClick={abrirForm}>
-          <PlusIcon className="w-4 h-4" /> Nueva compra
-        </button>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Compras</h1>
+        {hasPermiso('compras.crear') && (
+          <button className="btn-primary flex items-center gap-2" onClick={abrirForm}>
+            <PlusIcon className="w-4 h-4" /> Nueva compra
+          </button>
+        )}
       </div>
 
       <div className="flex items-start gap-2 rounded-lg bg-sky-50 border border-sky-200 px-4 py-2 text-sm text-sky-800">
@@ -640,6 +646,7 @@ export default function ComprasPage() {
               </div>
             </div>
 
+            {puedePagar && pagosCompra.estado !== 'cancelada' && (
             <form onSubmit={registrarPago} className="space-y-3 border-t border-slate-100 pt-4">
               <p className="text-sm font-semibold text-slate-700">Registrar pago</p>
               <div className="grid gap-3 md:grid-cols-2">
@@ -693,6 +700,7 @@ export default function ComprasPage() {
                 </button>
               </div>
             </form>
+            )}
           </div>
         )}
       </Modal>

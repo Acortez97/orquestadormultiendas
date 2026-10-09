@@ -1,6 +1,7 @@
 import PropTypes from 'prop-types';
 import DataTable from './DataTable';
 import BarChart from './BarChart';
+import { aFecha } from '../../utils/fechas';
 
 /**
  * Vista (presentacional) del Dashboard de productos: KPIs, gráfica de más vendidos y
@@ -11,7 +12,7 @@ import BarChart from './BarChart';
 
 const money = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n || 0);
 const num = (n) => new Intl.NumberFormat('es-MX').format(n || 0);
-const fechaCorta = (d) => (d ? new Date(d).toLocaleDateString('es-MX') : '');
+const fechaCorta = (d) => (d ? aFecha(d).toLocaleDateString('es-MX') : '');
 
 export default function ProductosDashboardView({ data }) {
   if (!data) return null;

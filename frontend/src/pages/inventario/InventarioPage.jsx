@@ -7,12 +7,15 @@ import ArticuloAutocomplete from '../../components/common/ArticuloAutocomplete';
 import MatrizColorTalla, { expandirMatriz } from '../../components/common/MatrizColorTalla';
 import { inventarioApi, almacenesApi, marcasApi } from '../../services/api/endpoints';
 import { useAuth } from '../../contexts/AuthContext';
+import { aviso } from '../../utils/avisos';
+import CargaMasiva from '../../components/common/CargaMasiva';
 
 const money = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
 const ajusteVacio = () => ({ art: null, id_articulo: '', codigo: '', descripcion: '', id_almacen: '', motivo: '', cant: {} });
 
-// Total físico = lo que hay en piso = disponible (cantidad) + apartado (reservado).
-const fisico = (r) => (Number(r.cantidad) || 0) + (Number(r.reservado) || 0);
+// En el API "cantidad" ya es el total físico (lo apartado sigue en piso); disponible = cantidad - reservado.
+const fisico = (r) => Number(r.cantidad) || 0;
+const disponible = (r) => (Number(r.cantidad) || 0) - (Number(r.reservado) || 0);
 
 // Etiquetas legibles para los tipos de movimiento del kardex (fallback: el valor crudo).
 const KARDEX_TIPO_LABEL = {
@@ -22,6 +25,7 @@ const KARDEX_TIPO_LABEL = {
 export default function InventarioPage() {
   const { hasPermiso } = useAuth();
   const [tab, setTab] = useState('existencias');
+  const [carga, setCarga] = useState(false);   // cargar existencias desde Excel
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [almacenes, setAlmacenes] = useState([]);
@@ -121,7 +125,7 @@ export default function InventarioPage() {
     try {
       await inventarioApi.ajusteLote({ id_almacen: form.id_almacen, motivo: form.motivo, lineas });
       setOpen(false); cargar();
-      Swal.fire({ icon: 'success', title: 'Ajuste aplicado', timer: 1200, showConfirmButton: false });
+      aviso('Ajuste aplicado');
     } catch (e) { Swal.fire('Error', e.message, 'error'); }
     finally { setSaving(false); }
   };
@@ -159,7 +163,7 @@ export default function InventarioPage() {
     },
     // Total físico = lo que hay en piso; de eso, Disponible se puede vender y Apartado está comprometido.
     { key: 'total', label: 'Total', render: (r) => fisico(r), sortValue: fisico, exportValue: fisico },
-    { key: 'cantidad', label: 'Disponible', render: (r) => <b>{r.cantidad}</b>, sortValue: (r) => Number(r.cantidad) || 0 },
+    { key: 'disponible', label: 'Disponible', render: (r) => <b>{disponible(r)}</b>, sortValue: disponible, exportValue: disponible },
     { key: 'reservado', label: 'Apartado', sortValue: (r) => Number(r.reservado) || 0 },
   ];
   const colsKardex = [
@@ -175,11 +179,17 @@ export default function InventarioPage() {
   ];
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">Inventario</h1>
-        {hasPermiso('almacen.ajustar') && <button className="btn-primary" onClick={() => { setForm(ajusteVacio()); setOpen(true); }}>Ajuste manual</button>}
+    <div className="mx-auto max-w-7xl space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Existencias</h1>
+        {hasPermiso('almacen.ajustar') && (
+          <div className="flex flex-wrap gap-2">
+            <button className="btn-secondary" onClick={() => setCarga(true)}>Cargar existencias (Excel)</button>
+            <button className="btn-primary" onClick={() => { setForm(ajusteVacio()); setOpen(true); }}>Ajuste manual</button>
+          </div>
+        )}
       </div>
+      <CargaMasiva tipo="existencias" open={carga} onClose={() => setCarga(false)} onDone={cargar} />
       <div className="flex flex-wrap gap-3 items-center">
         <div className="flex gap-2 border-b border-slate-200">
           {['existencias', 'kardex'].map((t) => (

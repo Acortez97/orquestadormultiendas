@@ -20,7 +20,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-800">Tablero general</h1>
+      <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Tablero general</h1>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <Tarjeta titulo="Tiendas" valor={t.tiendas ?? '—'} />
         <Tarjeta titulo="Activas" valor={t.activas ?? '—'} color="text-emerald-600" />

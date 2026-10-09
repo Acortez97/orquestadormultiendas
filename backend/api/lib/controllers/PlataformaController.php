@@ -31,6 +31,7 @@ class PlataformaController
             'max_almacenes' => $e['max_almacenes'] !== null ? (int) $e['max_almacenes'] : null,
             'notas'         => $e['notas'],
             'aviso_pago'    => $e['aviso_pago'],
+            'color'         => $e['color'] ?? null,
             'is_active'     => $e['is_active'],
             'createdAt'     => $e['created_at'],
         ];
@@ -157,6 +158,7 @@ class PlataformaController
             array_key_exists('max_usuarios', $b) ? self::limite($b['max_usuarios']) : $e['max_usuarios'],
             array_key_exists('max_almacenes', $b) ? self::limite($b['max_almacenes']) : $e['max_almacenes'],
             array_key_exists('notas', $b) ? $b['notas'] : $e['notas'], $e['id']]);
+        if (array_key_exists('color', $b)) Db::run('UPDATE empresas SET color = ? WHERE id = ?', [Tenant::colorTienda($b['color']), $e['id']]);
         Ledger::audit($ctx, 'editar_tienda', 'tienda', $e['id'], 'Tienda ' . $e['slug']);
         Http::updated(self::fmtTienda(self::tiendaFila((int) $e['id']), $ctx), 'Tienda');
     }
@@ -190,7 +192,7 @@ class PlataformaController
             Db::all('SELECT clave, nombre FROM modulos ORDER BY orden')));
     }
 
-    /** Define los modulos habilitados. Deshabilitar no borra permisos: solo dejan de aplicar. */
+    /** Define los modulos habilitados. Deshabilitar QUITA a los usuarios los permisos de ese modulo (al rehabilitarlo se asignan de nuevo). */
     public static function guardarModulos(array $p, array $ctx): void
     {
         $e = self::tiendaFila((int) $p['id']);
@@ -202,6 +204,16 @@ class PlataformaController
         foreach ($todos as $m) {
             Db::run('INSERT INTO empresa_modulos (id_empresa, modulo, activo) VALUES (?,?,?) ON DUPLICATE KEY UPDATE activo = VALUES(activo)',
                 [(int) $e['id'], $m, in_array($m, $sel, true) ? 1 : 0]);
+        }
+        // los permisos de modulos apagados se quitan a los usuarios (si no, su edicion fallaria) y su sesion se renueva
+        $apagados = array_values(array_diff($todos, $sel));
+        if ($apagados) {
+            $ph = implode(',', array_fill(0, count($apagados), '?'));
+            $args = array_merge([(int) $e['id']], $apagados);
+            Db::run("UPDATE users SET token_version = token_version + 1 WHERE id_empresa = ? AND id IN
+                       (SELECT id_user FROM (SELECT DISTINCT id_user FROM user_permisos WHERE id_empresa = ? AND modulo IN ($ph)) x)",
+                array_merge([(int) $e['id']], $args));
+            Db::run("DELETE FROM user_permisos WHERE id_empresa = ? AND modulo IN ($ph)", $args);
         }
         Db::commit();
         Ledger::audit($ctx, 'modulos_tienda', 'tienda', $e['id'], 'Modulos: ' . implode(', ', $sel));

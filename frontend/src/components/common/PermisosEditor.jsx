@@ -6,6 +6,13 @@ import PropTypes from 'prop-types';
  * - value:   { ventas: { ver: true, crear: true }, ... }
  * El modulo "usuarios" no se muestra: administrar usuarios es exclusivo del administrador de la tienda.
  */
+/** Quita permisos de modulos que la tienda ya no tiene habilitados (no se ven en el editor y el API los rechaza) */
+export function soloHabilitados(permisos, modulos) {
+  if (!modulos?.length) return permisos || {};   // aun no cargan los modulos: no se toca nada
+  const claves = new Set(modulos.map((m) => m.clave));
+  return Object.fromEntries(Object.entries(permisos || {}).filter(([m]) => claves.has(m)));
+}
+
 export default function PermisosEditor({ modulos, value, onChange, disabled }) {
   const lista = modulos.filter((m) => m.clave !== 'usuarios');
   const tiene = (m, a) => !!value?.[m]?.[a];

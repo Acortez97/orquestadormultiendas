@@ -6,6 +6,9 @@ import Modal from '../../components/common/Modal';
 import ArticuloAutocomplete from '../../components/common/ArticuloAutocomplete';
 import { articulosApi, categoriasApi, atributosApi, familiasApi, lineasApi, cortesCatalogoApi, marcasApi } from '../../services/api/endpoints';
 import { printEtiquetas } from '../../utils/labels';
+import { aviso } from '../../utils/avisos';
+import CargaMasiva from '../../components/common/CargaMasiva';
+import { useAuth } from '../../contexts/AuthContext';
 
 const money = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n || 0);
 const vacio = {
@@ -27,6 +30,8 @@ const leerArchivoDataUrl = (file) =>
   });
 
 export default function ArticulosPage() {
+  const { hasPermiso } = useAuth();
+  const [carga, setCarga] = useState(false);   // carga masiva desde Excel
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -201,20 +206,22 @@ export default function ArticulosPage() {
     try {
       const payload = {
         ...form,
-        id_categoria: form.id_categoria || undefined,
-        id_familia: form.id_familia || undefined,
-        id_linea: form.id_linea || undefined,
-        id_corte: form.id_corte || undefined,
-        id_marca: form.id_marca || undefined,
+        // null (no undefined): asi el API sabe que se QUITO el catalogo; undefined omite la clave y conserva el anterior
+        id_categoria: form.id_categoria || null,
+        id_familia: form.id_familia || null,
+        id_linea: form.id_linea || null,
+        id_corte: form.id_corte || null,
+        id_marca: form.id_marca || null,
       };
       if (editId) await articulosApi.actualizar(editId, payload); else await articulosApi.crear(payload);
       setOpen(false); cargar();
-      Swal.fire({ icon: 'success', title: 'Guardado', timer: 1200, showConfirmButton: false });
+      aviso('Guardado');
     } catch (e) { Swal.fire('Error', e.message, 'error'); }
   };
   const eliminar = async (r) => {
     const c = await Swal.fire({ title: `¿Desactivar ${r.codigo}?`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#e11d48' });
-    if (c.isConfirmed) { await articulosApi.eliminar(r._id); cargar(); }
+    if (!c.isConfirmed) return;
+    try { await articulosApi.eliminar(r._id); cargar(); } catch (e) { Swal.fire('Error', e.message, 'error'); }
   };
 
   const columns = [
@@ -259,11 +266,15 @@ export default function ArticulosPage() {
   const setPrecio = (k, v) => setForm((f) => ({ ...f, precios: { ...f.precios, [k]: Number(v) } }));
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">Artículos</h1>
-        <button className="btn-primary" onClick={abrirNuevo}><PlusIcon className="w-4 h-4" /> Nuevo</button>
+    <div className="mx-auto max-w-7xl space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Artículos</h1>
+        <div className="flex flex-wrap gap-2">
+          {hasPermiso('catalogos.crear') && <button className="btn-secondary" onClick={() => setCarga(true)}>Carga masiva (Excel)</button>}
+          <button className="btn-primary" onClick={abrirNuevo}><PlusIcon className="w-4 h-4" /> Nuevo</button>
+        </div>
       </div>
+      <CargaMasiva tipo="articulos" open={carga} onClose={() => setCarga(false)} onDone={cargar} />
       <div className="flex gap-2">
         <input className="input-base max-w-xs" placeholder="Buscar código / descripción / EAN" value={search}
           onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && cargar()} />

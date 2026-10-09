@@ -5,9 +5,11 @@ import Modal from './Modal';
 import { cuentasClienteApi, almacenesApi } from '../../services/api/endpoints';
 import { useAuth } from '../../contexts/AuthContext';
 import DestinoPago, { FORMAS_COBRO, faltaDestino, destinoPayload } from './DestinoPago';
+import { aFecha } from '../../utils/fechas';
+import { aviso } from '../../utils/avisos';
 
 const money = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n || 0));
-const fecha = (d) => (d ? new Date(d).toLocaleDateString('es-MX') : '');
+const fecha = (d) => (d ? aFecha(d).toLocaleDateString('es-MX') : '');
 
 // Etiqueta y color del badge por tipo de movimiento.
 const TIPO_META = {
@@ -35,7 +37,9 @@ export default function EstadoCuentaCliente({ cliente, onClose, onChanged, puede
   const [movs, setMovs] = useState([]);
   const [saldos, setSaldos] = useState({ saldo_credito: 0, saldo_favor: 0 });
   const [loading, setLoading] = useState(false);
-  const { user } = useAuth();
+  const { user, hasPermiso } = useAuth();
+  // registrar un abono requiere finanzas.crear (lo exige el API); sin el, solo consulta
+  const puedeAbonar = puedeCobrar && hasPermiso('finanzas.crear');
   const [almacenes, setAlmacenes] = useState([]);
   // el abono entra a la caja de la tienda (efectivo) o a la cuenta / terminal
   const abonoVacio = { monto: '', concepto: 'Abono a cuenta', forma: 'efectivo', id_banco: '', id_terminal: '', id_almacen: user?.id_tienda || '' };
@@ -90,7 +94,7 @@ export default function EstadoCuentaCliente({ cliente, onClose, onChanged, puede
       await cargarMovs(cliente._id);
       setAbono(abonoVacio);
       onChanged?.();
-      Swal.fire({ icon: 'success', title: 'Abono registrado', timer: 1400, showConfirmButton: false });
+      aviso('Abono registrado');
     } catch (err) {
       Swal.fire('Error', err?.message || 'No se pudo registrar el abono', 'error');
     } finally {
@@ -114,7 +118,7 @@ export default function EstadoCuentaCliente({ cliente, onClose, onChanged, puede
             <span className="text-slate-500">Movimientos: <b className="text-slate-800">{movs.length}</b></span>
           </div>
 
-          {puedeCobrar && (
+          {puedeAbonar && (
             <form onSubmit={registrarAbono} className="card p-4 space-y-3">
               <p className="text-sm font-semibold text-slate-700">Registrar abono (pago del cliente)</p>
               <div className="grid gap-3 md:grid-cols-4">

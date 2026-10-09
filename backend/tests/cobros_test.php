@@ -56,7 +56,7 @@ $r = api('POST', '/ventas', ['id_almacen' => $alm, 'lineas' => $linea(1), 'pagos
 status('Venta por transferencia a Banco secundario', $r, 201); $espC2 += 49;
 
 seccion('Apartado: anticipos con destino y liquidacion');
-$cli = d(api('POST', '/clientes', ['nombre' => 'Cliente Cobros'], $t))['_id'];
+$cli = d(api('POST', '/clientes', ['nombre' => 'Cliente Cobros', 'forma_pago' => 'Credito', 'limite_credito' => 5000], $t))['_id'];
 $apt = d(api('POST', '/apartados', ['id_cliente' => $cli, 'id_almacen' => $alm, 'lineas' => $linea(4)], $t));
 status('Anticipo en efectivo', api('PATCH', "/apartados/{$apt['_id']}/anticipo", ['importe' => 60, 'forma' => 'efectivo'], $t), 200); $espCaja += 60;
 status('Anticipo con TDC sin terminal -> 400', api('PATCH', "/apartados/{$apt['_id']}/anticipo", ['importe' => 10, 'forma' => 'tdc'], $t), 400);

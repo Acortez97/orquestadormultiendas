@@ -153,6 +153,8 @@ class CompraController
             $subtotal = (float) $c['subtotal'];
         }
         $iva = $aplicaIva ? round($subtotal * (float) Tenant::empresa()['iva'], 2) : 0.0;
+        if (round($subtotal + $iva, 2) + 0.001 < (float) $c['total_pagado'])
+            throw new ApiError('El nuevo total (' . number_format($subtotal + $iva, 2) . ') es menor que lo ya pagado (' . number_format((float) $c['total_pagado'], 2) . ')', 400, 'VALIDATION');
         Db::run('UPDATE compras SET id_proveedor = ?, id_almacen = ?, aplica_iva = ?, subtotal = ?, iva = ?, total = ?, notas = ? WHERE id = ? AND id_empresa = ?',
             [$idProv, $idAlm, $aplicaIva ? 1 : 0, $subtotal, $iva, round($subtotal + $iva, 2),
              array_key_exists('notas', $b) ? $b['notas'] : $c['notas'], $id, $emp]);
@@ -254,8 +256,8 @@ class CompraController
         Db::begin();
         $c = self::compraBloqueada($id);
         if ($c['estado'] === 'cancelada') throw new ApiError('No se puede pagar una compra cancelada', 400, 'VALIDATION');
-        if ((float) $c['total_pagado'] + $importe > (float) $c['total'] + 0.01) throw new ApiError('El pago excede el saldo de la compra', 400, 'VALIDATION');
-        if ($forma === 'efectivo' && $importe > FinanzasController::saldoCaja($emp, (int) $c['id_almacen']) + 0.01) {
+        if ((float) $c['total_pagado'] + $importe > (float) $c['total'] + 0.001) throw new ApiError('El pago excede el saldo de la compra', 400, 'VALIDATION');
+        if ($forma === 'efectivo' && $importe > FinanzasController::saldoCaja($emp, (int) $c['id_almacen'], true) + 0.001) {
             throw new ApiError('La caja del almacen de la compra no tiene ese efectivo', 400, 'VALIDATION');
         }
         Db::insert('INSERT INTO compra_pagos (id_empresa, id_compra, fecha, forma_pago, importe, aplica_iva, id_banco, referencia, id_usuario)

@@ -3,10 +3,11 @@ import Swal from 'sweetalert2';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import DataTable from '../../components/common/DataTable';
 import { auditApi } from '../../services/api/endpoints';
+import { aFecha } from '../../utils/fechas';
 
 const fecha = (d) =>
   d
-    ? new Date(d).toLocaleString('es-MX', {
+    ? aFecha(d).toLocaleString('es-MX', {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
@@ -74,8 +75,8 @@ export default function BitacoraPage() {
   ];
 
   return (
-    <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-bold text-slate-800">Bitácora</h1>
+    <div className="mx-auto max-w-7xl space-y-4">
+      <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Bitácora</h1>
 
       <div className="card p-4">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">

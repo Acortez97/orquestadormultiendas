@@ -47,6 +47,7 @@ export default function BancosPage() {
   const [modal, setModal] = useState(null);       // cuenta | terminal | movimiento | gasto | libro
   const [form, setForm] = useState({});
   const [libro, setLibro] = useState(null);
+  const [guardando, setGuardando] = useState(false);   // evita registrar dos veces con doble clic
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -68,6 +69,8 @@ export default function BancosPage() {
   };
 
   const guardar = async () => {
+    if (guardando) return;
+    setGuardando(true);
     try {
       if (modal === 'cuenta') {
         const data = { nombre: form.nombre, moneda: form.moneda || 'MXN', cuenta: form.cuenta || null, clabe: form.clabe || null };
@@ -82,7 +85,7 @@ export default function BancosPage() {
         await cajasApi.movimiento(form.id_almacen, { tipo: form.tipo, monto: Number(form.monto), concepto: form.concepto });
       }
       setModal(null); cargar();
-    } catch (e) { err(e); }
+    } catch (e) { err(e); } finally { setGuardando(false); }
   };
 
   const campo = (k, label, props = {}) => (
@@ -98,15 +101,19 @@ export default function BancosPage() {
       </select>
     </label>
   );
-  const totalCuentas = cuentas.filter((c) => c.is_active === 'Si').reduce((a, c) => a + c.saldo_actual, 0);
+  // cada moneda por separado: nunca se suman dolares con pesos
+  const totalCuentas = cuentas.filter((c) => c.is_active === 'Si' && (c.moneda || 'MXN') === 'MXN').reduce((a, c) => a + c.saldo_actual, 0);
+  const totalCuentasUsd = cuentas.filter((c) => c.is_active === 'Si' && c.moneda === 'USD').reduce((a, c) => a + c.saldo_actual, 0);
+  const hayUsd = cuentas.some((c) => c.is_active === 'Si' && c.moneda === 'USD');
   const totalCajas = cajas.reduce((a, c) => a + c.saldo, 0);
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="mx-auto max-w-7xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-slate-800">Bancos y cajas</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Bancos y cajas</h1>
         <div className="flex gap-4 text-sm">
           <span className="card px-3 py-2">En cuentas: <b>{money(totalCuentas)}</b></span>
+          {hayUsd && <span className="card px-3 py-2">En cuentas USD: <b>{new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'USD' }).format(totalCuentasUsd)}</b></span>}
           <span className="card px-3 py-2">Efectivo en tiendas: <b>{money(totalCajas)}</b></span>
         </div>
       </div>
@@ -181,7 +188,7 @@ export default function BancosPage() {
       <Modal open={['cuenta', 'terminal', 'movimiento', 'gasto'].includes(modal)} onClose={() => setModal(null)}
         title={{ cuenta: form._id ? 'Editar cuenta' : 'Nueva cuenta', terminal: form._id ? 'Editar terminal' : 'Nueva terminal',
                  movimiento: 'Movimiento de cuenta', gasto: 'Entrada / salida de efectivo' }[modal] || ''}
-        footer={<><button className="btn-secondary" onClick={() => setModal(null)}>Cancelar</button><button className="btn-primary" onClick={guardar}>Guardar</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setModal(null)}>Cancelar</button><button className="btn-primary" onClick={guardar} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar'}</button></>}>
         <div className="space-y-3">
           {modal === 'cuenta' && (<>
             {campo('nombre', 'Nombre (p. ej. BBVA empresarial)')}

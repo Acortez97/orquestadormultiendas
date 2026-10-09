@@ -19,22 +19,32 @@ class Cobros
     /**
      * Valida el destino del dinero segun la forma de pago. Devuelve [id_banco, id_terminal].
      * Tarjeta: la terminal es obligatoria y define la cuenta. Transferencia/cheque: la cuenta es obligatoria.
+     * $moneda: moneda que debe tener la cuenta (todo cobro / pago de la tienda es en pesos); null = cualquiera.
      */
-    public static function destino(string $forma, $idBanco = null, $idTerminal = null): array
+    public static function destino(string $forma, $idBanco = null, $idTerminal = null, ?string $moneda = 'MXN'): array
     {
         if (in_array($forma, self::TARJETA, true)) {
             $idTerminal = Tenant::owns('terminales', $idTerminal, 'Terminal');
             if (!$idTerminal) throw new ApiError('Selecciona la terminal con la que se cobro con tarjeta', 400, 'VALIDATION');
             $t = Db::one('SELECT id_banco, is_active FROM terminales WHERE id = ? AND id_empresa = ?', [$idTerminal, Tenant::id()]);
             if ($t['is_active'] !== 'Si') throw new ApiError('La terminal esta desactivada', 400, 'VALIDATION');
+            self::validarMoneda((int) $t['id_banco'], $moneda);
             return [(int) $t['id_banco'], $idTerminal];
         }
         if (in_array($forma, self::CUENTA, true)) {
             $idBanco = Tenant::owns('bancos', $idBanco, 'Cuenta');
             if (!$idBanco) throw new ApiError('Selecciona la cuenta a la que llego la ' . strtolower(self::ETIQUETA[$forma]), 400, 'VALIDATION');
+            self::validarMoneda($idBanco, $moneda);
             return [$idBanco, null];
         }
         return [null, null];   // efectivo -> caja; monedero / anticipo -> sin dinero
+    }
+
+    private static function validarMoneda(int $idBanco, ?string $moneda): void
+    {
+        if ($moneda === null) return;
+        $m = Db::one('SELECT moneda FROM bancos WHERE id = ? AND id_empresa = ?', [$idBanco, Tenant::id()])['moneda'] ?? 'MXN';
+        if ($m !== $moneda) throw new ApiError("La cuenta es en $m; este movimiento es en $moneda", 400, 'VALIDATION');
     }
 
     /** Registra la ENTRADA de un cobro (ingreso a caja o a la cuenta). */

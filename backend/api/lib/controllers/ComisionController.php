@@ -1,6 +1,38 @@
 <?php
 class ComisionController
 {
+    /**
+     * Cancelacion de venta: se anulan las comisiones no pagadas; las ya pagadas quedan y se registra
+     * un descuento (importe negativo, pendiente) que se aplica en el siguiente pago al vendedor.
+     */
+    public static function anularVenta(int $emp, int $idVenta): void
+    {
+        $neto = Db::all("SELECT id_empleado, porcentaje, SUM(base) base, SUM(importe) importe FROM comisiones
+                         WHERE id_empresa = ? AND id_venta = ? AND anulada = 0 AND pagada = 'Si' GROUP BY id_empleado, porcentaje", [$emp, $idVenta]);
+        Db::run("UPDATE comisiones SET anulada = 1 WHERE id_empresa = ? AND id_venta = ? AND pagada = 'No'", [$emp, $idVenta]);
+        foreach ($neto as $c) {
+            if ((float) $c['importe'] <= 0) continue;
+            Db::insert("INSERT INTO comisiones (id_empresa, id_empleado, id_venta, base, porcentaje, importe, pagada) VALUES (?,?,?,?,?,?,'No')",
+                [$emp, (int) $c['id_empleado'], $idVenta, -1 * (float) $c['base'], (float) $c['porcentaje'], -1 * (float) $c['importe']]);
+        }
+    }
+
+    /**
+     * Devolucion / cambio: ajusta la comision de la venta segun la base comisionable que cambio
+     * ($deltaBase negativo = se devolvio mercancia). Se registra como movimiento pendiente (+/-).
+     */
+    public static function ajustarVenta(int $emp, int $idVenta, float $deltaBase): void
+    {
+        $deltaBase = round($deltaBase, 2);
+        if (abs($deltaBase) < 0.005) return;
+        $c = Db::one('SELECT id_empleado, porcentaje FROM comisiones WHERE id_empresa = ? AND id_venta = ? AND anulada = 0 AND importe > 0 ORDER BY id LIMIT 1', [$emp, $idVenta]);
+        if (!$c) return;   // la venta no genero comision
+        $importe = round($deltaBase * (float) $c['porcentaje'] / 100, 2);
+        if (abs($importe) < 0.005) return;
+        Db::insert("INSERT INTO comisiones (id_empresa, id_empleado, id_venta, base, porcentaje, importe, pagada) VALUES (?,?,?,?,?,?,'No')",
+            [$emp, (int) $c['id_empleado'], $idVenta, $deltaBase, (float) $c['porcentaje'], $importe]);
+    }
+
     public static function listar(array $p, array $ctx): void
     {
         $emp = Tenant::id();

@@ -19,6 +19,14 @@ export function AuthProvider({ children }) {
   const [token, setToken]     = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Color de la tienda: toda la escala primary-* de la interfaz se deriva de --acento
+  const colorTienda = user?.tienda?.color || null;
+  useEffect(() => {
+    const raiz = document.documentElement;
+    if (colorTienda) raiz.style.setProperty('--acento', colorTienda);
+    else raiz.style.removeProperty('--acento');
+  }, [colorTienda]);
+
   const aplicar = useCallback((t, u) => {
     session.guardar(t, u);
     setToken(t);

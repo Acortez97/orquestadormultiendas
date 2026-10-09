@@ -75,7 +75,7 @@ class InventarioController
         Http::ok(array_map(fn($r) => [
             '_id'         => (int) $r['id'],
             'id_articulo' => [
-                '_id' => (int) $r['id_articulo'], 'codigo' => $r['art_codigo'], 'descripcion' => $r['art_desc'], 'costo' => (float) $r['art_costo'],
+                '_id' => (int) $r['id_articulo'], 'codigo' => $r['art_codigo'], 'descripcion' => $r['art_desc'], 'costo' => Permisos::$verCostos ? (float) $r['art_costo'] : null,
                 'id_marca' => $r['art_marca'] !== null ? ['_id' => (int) $r['art_marca'], 'nombre' => $r['marca_nombre']] : null,
             ],
             'id_color'    => Variantes::ref($r['id_valor1'], $r['v1_nombre'], $r['v1_hex'], $r['v1_orden'], 'Unico'),

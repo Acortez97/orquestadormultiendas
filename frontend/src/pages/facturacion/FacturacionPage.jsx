@@ -4,8 +4,8 @@ import { useAuth } from '../../contexts/AuthContext';
 export default function FacturacionPage() {
   const { user } = useAuth();
   return (
-    <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-bold text-slate-800">Facturación (CFDI)</h1>
+    <div className="mx-auto max-w-7xl space-y-4">
+      <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Facturación (CFDI)</h1>
       <div className="card p-6 max-w-2xl">
         <div className="flex items-start gap-4">
           <div className="p-3 rounded-xl bg-primary-50"><ReceiptPercentIcon className="w-7 h-7 text-primary-600" /></div>

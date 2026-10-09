@@ -1,3 +1,4 @@
+import { aFecha } from './fechas';
 /**
  * Impresión de tickets de 80mm para movimientos de cliente (venta, devolución, cambio).
  * Genera el HTML del ticket y lo manda a imprimir en un iframe oculto (diálogo automático).
@@ -21,7 +22,7 @@ const money = (n) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n) || 0);
 
 const fechaHora = (d) => {
-  const date = d ? new Date(d) : new Date();
+  const date = d ? aFecha(d) : new Date();
   return date.toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
 };
 

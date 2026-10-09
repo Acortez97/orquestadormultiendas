@@ -27,6 +27,24 @@ class VentaController
         }
     }
 
+    /** Sustituye los precios cotizados por los pactados (liquidacion de apartado) y recalcula totales */
+    private static function aplicarPrecios(array $q, array $precios, float $iva): array
+    {
+        if (count($precios) !== count($q['lineas'])) throw new LogicException('Precios pactados no coinciden con las lineas');
+        $total = 0.0;
+        foreach ($q['lineas'] as $i => &$ln) {
+            $ln['precio_unitario'] = round((float) $precios[$i], 2);
+            $ln['importe'] = round($ln['precio_unitario'] * (float) $ln['cantidad'], 2);
+            $ln['lista_aplicada'] = 'APARTADO';
+            $total += $ln['importe'];
+        }
+        unset($ln);
+        $q['total'] = round($total, 2);
+        $q['subtotal'] = round($q['total'] / (1 + $iva), 2);
+        $q['iva'] = round($q['total'] - $q['subtotal'], 2);
+        return $q;
+    }
+
     /** Siguiente folio de venta de la tienda (serie del almacen). Requiere transaccion abierta. */
     public static function siguienteFolio(int $emp, int $idAlm, string $tipo = 'venta', string $serieDefault = 'V'): string
     {
@@ -40,7 +58,17 @@ class VentaController
         $b = Http::body();
         $lineas = $b['lineas'] ?? [];
         if (!is_array($lineas) || count($lineas) === 0) throw new ApiError('Sin lineas para cotizar', 400, 'VALIDATION');
-        Http::ok(Pricing::cotizar(Tenant::id(), Tenant::owns('clientes', $b['id_cliente'] ?? null, 'Cliente'), $lineas, self::ivaEmpresa()));
+        $q = Pricing::cotizar(Tenant::id(), Tenant::owns('clientes', $b['id_cliente'] ?? null, 'Cliente'), $lineas, self::ivaEmpresa());
+        // con id_almacen: cuanto hay libre (sin lo apartado) para avisar en el POS; los kits no llevan existencia propia
+        $idAlm = Tenant::owns('almacenes', $b['id_almacen'] ?? null, 'Almacen');
+        if ($idAlm) foreach ($q['lineas'] as &$ln) {
+            $ln['disponible'] = $ln['es_kit'] ? null : InventarioController::disponible(Tenant::id(), (int) $ln['id_articulo'],
+                Variantes::norm($ln['id_color']), Variantes::norm($ln['id_talla']), $idAlm);
+        }
+        unset($ln);
+        if (!Permisos::$verCostos) foreach ($q['lineas'] as &$ln) $ln['costo_unitario'] = null;
+        unset($ln);
+        Http::ok($q);
     }
 
     public static function crear(array $p, array $ctx): void
@@ -54,8 +82,10 @@ class VentaController
      * Si $enTransaccion = true, el llamador maneja la transaccion (apartados).
      * $formasInternas: formas de pago que solo puede usar el sistema (p. ej. 'anticipo' al liquidar
      * un apartado); nunca se aceptan desde el POS.
+     * $preciosPactados: precio unitario por linea (mismo orden) que sustituye la cotizacion; solo lo usa
+     * el sistema al liquidar un apartado (se respeta el precio con que se aparto). Nunca viene del front.
      */
-    public static function registrar(array $b, array $ctx, bool $enTransaccion = false, array $formasInternas = []): int
+    public static function registrar(array $b, array $ctx, bool $enTransaccion = false, array $formasInternas = [], ?array $preciosPactados = null): int
     {
         $emp = Tenant::id();
         $idAlm = Tenant::owns('almacenes', $b['id_almacen'] ?? $ctx['user']['id_tienda'] ?? null, 'Almacen', true);
@@ -64,6 +94,7 @@ class VentaController
         $idCliente = Tenant::owns('clientes', $b['id_cliente'] ?? null, 'Cliente');
         $idVendedor = Tenant::owns('empleados', $b['id_vendedor'] ?? null, 'Vendedor');
         $q = Pricing::cotizar($emp, $idCliente, $lineas, self::ivaEmpresa());
+        if ($preciosPactados !== null) $q = self::aplicarPrecios($q, $preciosPactados, self::ivaEmpresa());
         $total = $q['total'];
 
         // Pagos
@@ -90,20 +121,22 @@ class VentaController
         }
 
         $montoCredito = 0.0; $saldoFavorGenerado = 0.0; $cambioEfectivo = 0.0;
+        $totalEfectivo = round($totalEfectivo, 2); $saldoFavorUsado = round($saldoFavorUsado, 2);
         if ($aCredito) {
-            $montoCredito = round(max(0, $total - $totalPagado), 2);
-        } else {
-            if ($totalPagado + 0.01 < $total) throw new ApiError('El pago es insuficiente para una venta de contado', 400, 'VALIDATION');
-            $excedente = round(max(0, $totalPagado - $total), 2);
-            if ($excedente > 0 && ($b['destino_cambio'] ?? 'monedero') === 'efectivo' && $totalEfectivo + 0.001 >= $excedente) {
-                $cambioEfectivo = $excedente;            // se entrega en efectivo
-            } elseif ($excedente > 0) {
-                if (!$idCliente) {
-                    if ($totalEfectivo + 0.001 < $excedente) throw new ApiError('El excedente solo puede ir al monedero si hay cliente', 400, 'VALIDATION');
-                    $cambioEfectivo = $excedente;        // sin cliente, el cambio siempre es en efectivo
-                } else {
-                    $saldoFavorGenerado = $excedente;    // excedente al monedero del cliente
-                }
+            $montoCredito = round(max(0, $total - $totalPagado), 2);   // lo no pagado queda a credito
+        } elseif ($totalPagado + 0.001 < $total) {
+            throw new ApiError('El pago es insuficiente para una venta de contado', 400, 'VALIDATION');
+        }
+        // excedente (contado o credito sobrepagado): cambio en efectivo o al monedero del cliente
+        $excedente = round(max(0, $totalPagado - $total), 2);
+        if ($excedente > 0 && ($b['destino_cambio'] ?? 'monedero') === 'efectivo' && $totalEfectivo + 0.001 >= $excedente) {
+            $cambioEfectivo = $excedente;            // se entrega en efectivo
+        } elseif ($excedente > 0) {
+            if (!$idCliente) {
+                if ($totalEfectivo + 0.001 < $excedente) throw new ApiError('El excedente solo puede ir al monedero si hay cliente', 400, 'VALIDATION');
+                $cambioEfectivo = $excedente;        // sin cliente, el cambio siempre es en efectivo
+            } else {
+                $saldoFavorGenerado = $excedente;    // excedente al monedero del cliente
             }
         }
 
@@ -113,6 +146,7 @@ class VentaController
                 $c = Db::one('SELECT saldo_favor FROM clientes WHERE id = ? AND id_empresa = ? FOR UPDATE', [$idCliente, $emp]);
                 if ((float) $c['saldo_favor'] + 0.001 < $saldoFavorUsado) throw new ApiError('El saldo del monedero es insuficiente', 400, 'VALIDATION');
             }
+            if ($montoCredito > 0) ClienteController::validarCredito($emp, $idCliente, $montoCredito);
             $folio = self::siguienteFolio($emp, $idAlm);
             $idUser = $ctx['user']['id'];
             $ventaId = Db::insert(
@@ -188,7 +222,7 @@ class VentaController
             'id_color' => (int) $l['id_valor1'], 'id_talla' => (int) $l['id_valor2'],
             'color' => $nombres[(int) $l['id_valor1']] ?? null, 'talla' => $nombres[(int) $l['id_valor2']] ?? null,
             'cantidad' => (float) $l['cantidad'], 'precio_unitario' => (float) $l['precio_unitario'],
-            'costo_unitario' => (float) $l['costo_unitario'], 'lista_aplicada' => $l['lista_aplicada'],
+            'costo_unitario' => Permisos::$verCostos ? (float) $l['costo_unitario'] : null, 'lista_aplicada' => $l['lista_aplicada'],
             'comisiona' => (bool) $l['comisiona'], 'importe' => (float) $l['importe'],
         ], $filas);
 
@@ -259,6 +293,14 @@ class VentaController
             if (Db::one('SELECT 1 FROM devoluciones WHERE id_empresa = ? AND id_venta = ? UNION SELECT 1 FROM cambios WHERE id_empresa = ? AND id_venta = ?', [$emp, $id, $emp, $id]))
                 throw new ApiError('La venta tiene devoluciones o cambios; no se puede cancelar', 400, 'VALIDATION');
             $idUser = $ctx['user']['id'];
+            // D6: no se cancela si el cliente ya abono a esta venta a credito o ya gasto el saldo a favor que genero
+            if ($v['id_cliente'] && ((float) $v['monto_credito'] > 0 || (float) $v['saldo_favor_generado'] > 0)) {
+                $c = Db::one('SELECT saldo_credito, saldo_favor FROM clientes WHERE id = ? AND id_empresa = ? FOR UPDATE', [(int) $v['id_cliente'], $emp]);
+                if ((float) $v['monto_credito'] > 0 && (float) $c['saldo_credito'] + 0.001 < (float) $v['monto_credito'])
+                    throw new ApiError('El cliente ya abono a esta venta a credito; no se puede cancelar (registra una devolucion)', 400, 'VALIDATION');
+                if ((float) $v['saldo_favor_generado'] > 0 && (float) $c['saldo_favor'] + 0.001 < (float) $v['saldo_favor_generado'])
+                    throw new ApiError('El cliente ya uso el saldo a favor que genero esta venta; no se puede cancelar', 400, 'VALIDATION');
+            }
 
             foreach (Db::all('SELECT * FROM venta_lineas WHERE id_empresa = ? AND id_venta = ?', [$emp, $id]) as $l) {
                 self::afectarInventario($emp, (int) $l['id_articulo'], Variantes::norm($l['id_valor1']), Variantes::norm($l['id_valor2']),
@@ -275,12 +317,17 @@ class VentaController
             $efectivo = 0.0;
             foreach (Db::all('SELECT * FROM venta_pagos WHERE id_empresa = ? AND id_venta = ?', [$emp, $id]) as $pg) {
                 if ($pg['forma'] === 'efectivo') { $efectivo += (float) $pg['importe']; continue; }
+                // el anticipo de un apartado ya se cobro antes: regresa al monedero del cliente (como al cancelar un apartado)
+                if ($pg['forma'] === 'anticipo') {
+                    if ($v['id_cliente']) Ledger::monederoMov($emp, (int) $v['id_cliente'], (float) $pg['importe'], 'deposito', 'Anticipo de venta cancelada ' . $v['folio'], 'CancelacionVenta', $id);
+                    continue;
+                }
                 Cobros::salida($emp, $pg['forma'], (float) $pg['importe'], $pg['id_banco'] !== null ? (int) $pg['id_banco'] : null,
                     $pg['id_terminal'] !== null ? (int) $pg['id_terminal'] : null, (int) $v['id_almacen'], 'Cancelacion ' . $v['folio'], 'CancelacionVenta', $id, $idUser);
             }
             Cobros::salida($emp, 'efectivo', round($efectivo - (float) $v['cambio_efectivo'], 2), null, null, (int) $v['id_almacen'],
                 'Cancelacion ' . $v['folio'], 'CancelacionVenta', $id, $idUser);
-            Db::run('UPDATE comisiones SET anulada = 1 WHERE id_empresa = ? AND id_venta = ?', [$emp, $id]);
+            ComisionController::anularVenta($emp, $id);
             Db::run("UPDATE ventas SET estado = 'cancelada', cancelada_por = ?, fecha_cancelacion = NOW() WHERE id = ? AND id_empresa = ?", [$idUser, $id, $emp]);
             Db::commit();
         } catch (Throwable $e) { Db::rollback(); throw $e; }

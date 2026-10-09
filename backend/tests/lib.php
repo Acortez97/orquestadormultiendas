@@ -64,12 +64,24 @@ function credenciales(): array
     return $out;
 }
 
-/** Login y devuelve [token, user] o termina si falla */
+/**
+ * Login y devuelve [token, user] (user = el del login) o termina si falla.
+ * Si la contrasena es temporal (debe_cambiar_password), el API no deja operar: se cambia a otra y se regresa
+ * a la misma, para que la sesion sirva y las credenciales sigan siendo las de credenciales.local.txt.
+ */
 function entrar(string $login, string $pass): array
 {
     $r = api('POST', '/auth/login', ['email' => $login, 'password' => $pass]);
     if ($r['status'] !== 200) { fwrite(STDERR, "Login fallo para $login: {$r['raw']}\n"); exit(2); }
-    return [$r['body']['data']['token'], $r['body']['data']['user']];
+    $token = $r['body']['data']['token'];
+    if (!empty($r['body']['data']['user']['debe_cambiar_password'])) {
+        foreach ([[$pass, $pass . '#tmp'], [$pass . '#tmp', $pass]] as [$de, $a]) {
+            $c = api('POST', '/auth/change-password', ['currentPassword' => $de, 'newPassword' => $a], $token);
+            if ($c['status'] !== 200) { fwrite(STDERR, "No se pudo cambiar la contrasena de $login: {$c['raw']}\n"); exit(2); }
+            $token = $c['body']['data']['token'];
+        }
+    }
+    return [$token, $r['body']['data']['user']];
 }
 
 /** Busca en una respuesta cualquier id interno expuesto (clave de id con valor numerico) */

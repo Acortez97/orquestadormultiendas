@@ -11,7 +11,7 @@ una sola BD**. Fork de MultiTienda (a su vez de LEVOTEK). Dos paneles en el mism
 
 **Idioma:** el usuario escribe en español; responde y documenta en español.
 
-## Estado: F0–F7 completas (2026-10-06)
+## Estado: F0–F7 completas (2026-10-06) + revisión y correcciones (2026-10-08) + rediseño «Mostrador» (2026-10-09)
 Backend, frontend y empaquetado listos y probados. Pendiente del usuario: subir a GoDaddy
 (ver [DESPLIEGUE-GODADDY.md](DESPLIEGUE-GODADDY.md)) y definir el nombre comercial (los textos visibles aún
 dicen "MultiTienda"; la tienda ve su propio nombre/logo).
@@ -54,17 +54,41 @@ dicen "MultiTienda"; la tienda ve su propio nombre/logo).
   `anticipo` no mueven dinero. Saldo de cuenta = Σ `banco_movimientos` (la conciliación lo revisa). Depósito =
   sale de caja y entra a cuenta. El corte (`CorteController::computar`) toma el efectivo esperado del libro de caja
   del día y el desglose "dónde quedó el dinero" solo de cobros a clientes (`Venta`, `CancelacionVenta`,
-  `Apartado`, `Cambio`, `Abono`). Un corte por almacén y día.
+  `Apartado`, `Cambio`, `Abono`). Un corte por almacén y día. Cobros y pagos de la tienda son en **MXN**
+  (`Cobros::destino` rechaza cuentas USD); un pago a proveedor en otra moneda pide `tipo_cambio`.
+- **Reglas de negocio (decididas 2026-10-08):** crédito validado en el servidor (`ClienteController::validarCredito`:
+  cliente con crédito autorizado, activo, no Público General y sin rebasar `limite_credito`; aplica a ventas y a la
+  diferencia de cambios); dar/cambiar crédito exige `clientes.autorizar_credito` y límite > 0; el saldo a favor no se
+  carga al crear cliente (solo Monedero). Sobrepago en venta a crédito = cambio o monedero, como contado. Un apartado
+  se liquida al precio pactado (`registrar(..., $preciosPactados)`). No se cancela una venta a crédito ya abonada ni
+  una cuyo saldo a favor ya se gastó; al cancelar la venta de un apartado el anticipo va al monedero. Devolución de
+  venta con crédito: primero baja la deuda de esa venta, el resto al monedero (`destino_saldo = mixto`). Comisiones:
+  devoluciones/cambios registran ajustes (+/−); al cancelar se anulan solo las no pagadas y las pagadas generan un
+  descuento pendiente. Un kit ya vendido no cambia de composición; un kit no lleva variantes ni otro kit.
+- **Hora:** `Db::init` fija la zona de PHP y MySQL (`db.zona_horaria`, por defecto America/Mexico_City). El front manda
+  fechas `yyyy-mm-dd` locales (`utils/fechas.js`) y lee las del API con `aFecha()`.
+- **Costos:** solo los ve quien tiene `reportes.costos`, `catalogos.crear/editar` o `compras.crear/editar`
+  (`Permisos::$verCostos`); los demás reciben `costo: null`. Listar clientes/empleados exige un permiso que los use.
+- **Carga masiva** (`ImportController`, front `components/common/CargaMasiva.jsx` + `utils/cargaMasiva.js`): plantilla
+  Excel → el navegador lee el archivo (xlsx/csv, UTF-8 o windows-1252) → `POST /importar/articulos|existencias`
+  con `aplicar=false` revisa dentro de una transaccion que se revierte (resumen + errores por renglon) y
+  `aplicar=true` guarda todo o nada (máx. 3,000 renglones). Crea categorias (ejes Color/Talla), marcas, familias,
+  lineas y valores que falten; articulo existente = actualiza costo/precios (requiere `catalogos.editar`) y suma
+  existencia (`almacen.ajustar`); movimiento `carga_inicial`. Existencias: «reemplazar» (conteo) o «sumar», por
+  codigo, SKU o codigo de barras. Los kits no se cargan masivamente.
 - `lib/controllers/PlataformaController.php`: tiendas, módulos, usuarios de cualquier tienda, entrar en soporte
   (token 2 h con claim `t`), conciliación, respaldo JSON, bitácora global.
 
 ## Roles, login y sesión
 - Roles: `superadmin` (`id_empresa` NULL; CHECK en BD), `admin_tienda`, `usuario`.
 - Login: `usuario@<slug>.levotek.com` (tienda) o `usuario@levotek.com` (superadmin). Error siempre
-  "Correo o contraseña incorrectos" (hash de relleno contra timing); bloqueo 5 fallos/15 min por correo, 20 por IP.
+  "Correo o contraseña incorrectos" (hash de relleno contra timing); bloqueo en 15 min: 5 fallos por correo desde la
+  misma IP, 20 por IP, 50 por correo desde cualquier IP. El PIN de listas 4/5 se bloquea tras 5 fallos (`pin:<id>`).
 - JWT solo trae `u` (id cifrado con sal de plataforma), `v` (token_version) y opcional `t` (soporte). Cambiar
   permisos, desactivar o resetear contraseña sube `token_version` → la sesión se cierra.
-- Usuarios nuevos `debe_cambiar_password = 1` (el front obliga a cambiarla). `empresas.slug` es inmutable.
+- Usuarios nuevos o con contraseña reseteada: `debe_cambiar_password = 1`; **la API no deja operar** (403
+  `DEBE_CAMBIAR_PASSWORD`, salvo `/auth/me` y `/auth/change-password`) hasta cambiarla. `empresas.slug` es inmutable.
+- Apagar un módulo quita esos permisos a los usuarios; reenviar los mismos permisos no cierra la sesión.
 - Superadmin en soporte: `ctx.user.id = null`, `act_as` = su id; los registros que crea guardan `id_usuario` NULL.
 
 ## Frontend (`frontend/src/`)
@@ -74,6 +98,18 @@ dicen "MultiTienda"; la tienda ve su propio nombre/logo).
 - `pages/admin/*`: panel general. `pages/usuarios/UsuariosPage.jsx`: usuarios de la tienda (solo admin_tienda).
   `components/common/PermisosEditor.jsx`: editor módulo × acción.
 - Permisos del front deben coincidir con `modulo_acciones` (datos al final de `schema.sql`).
+- **Diseño «Mostrador»** (propuesta en el lienzo de Artifacts): `styles/globals.css` define papel/tinta, estados y
+  la escala `primary-*` derivada de `--acento` = color de la tienda (`empresas.color`, lo aplica `AuthContext`;
+  la tienda lo cambia en Configuración › Apariencia y el superadmin en Tiendas). Letras locales (@fontsource:
+  Instrument Sans + JetBrains Mono, `.folio`), cifras tabulares, botones de 44 px en pantallas táctiles.
+- **Navegación adaptable** (`components/layout/`): `navConfig.js` es el único menú (grupos Vender / Mercancía /
+  Dinero / Administrar, filtrado por permisos). ≥1024 px `Sidebar` plegable; 640–1023 px `Riel` de iconos;
+  <640 px `BarraInferior` + `MenuMas`; `BuscadorGlobal` con Ctrl+K. El POS (`/pos`) va a pantalla completa con
+  atajos F2/F4/F12, frecuentes (localStorage por tienda), cámara y, en celular, el ticket como hoja inferior.
+  `PendientesContext` + `GET /tienda/pendientes` dan los contadores del menú; `GET /tienda/hoy` alimenta Inicio.
+- `DataTable` muestra tarjetas en celular (`movil: false` oculta una columna); `PanelDetalle` = panel lateral en
+  computadora / hoja en celular; `Modal` sale como hoja inferior en celular; `utils/avisos.js` (`aviso()`) para
+  confirmaciones discretas; `utils/fechas.js` (`hoyLocal`, `aFecha`) para fechas locales.
 
 ## Entorno local (Windows)
 - MariaDB 10.4 de XAMPP en **3307** (forzado con `--port=3307`; en 3306 está el MySQL del sistema: no tocarlo).
@@ -81,17 +117,19 @@ dicen "MultiTienda"; la tienda ve su propio nombre/logo).
 - `backend/api/lib/config.local.php` (de `config.local.example.php`); `frontend/.env` (de `.env.example`).
 - `php backend/api/reset-db.php --go --demo` → superadmin + tiendas `demo1` y `demo2` (admin + cajero1).
   Contraseñas aleatorias en `backend/api/credenciales.local.txt` (ignorado). **No las muestres en el chat.**
-  Todos los usuarios demo deben cambiar su contraseña al primer acceso por la UI (la API de pruebas no lo exige).
+  Los usuarios demo deben cambiar su contraseña al primer acceso; `entrar()` de `backend/tests/lib.php` lo hace solo
+  (la cambia y la regresa a la misma).
 
 ## Pruebas (todas deben dar 100 %; las de API requieren el backend en 8082)
 ```bash
-php backend/api/reset-db.php --go --demo && php backend/tests/esquema_test.php         # 53  aislamiento en BD
+php backend/api/reset-db.php --go --demo && php backend/tests/esquema_test.php         # 54  aislamiento en BD
 php backend/tests/loginid_test.php                                                     # 16  correos de acceso
 php backend/api/reset-db.php --go --demo && php backend/tests/auth_test.php            # 59  login, permisos, usuarios
 php backend/api/reset-db.php --go --demo && php backend/tests/aislamiento_api_test.php # 200 flujo completo + ataques
-php backend/api/reset-db.php --go --demo && php backend/tests/plataforma_test.php      # 53  panel de plataforma
+php backend/api/reset-db.php --go --demo && php backend/tests/plataforma_test.php      # 64  panel de plataforma
 php backend/api/reset-db.php --go --demo && php backend/tests/cobros_test.php          # 44  cobros, cuentas, caja y corte
-cd frontend && npm run build                                                           # JS principal ~309 KB
+php backend/api/reset-db.php --go --demo && php backend/tests/correcciones_test.php    # 133 regresión: revisión 2026-10-08, rediseño y carga masiva
+cd frontend && npm run build                                                           # JS principal ~323 KB
 ```
 **Datos de prueba para revisar en pantalla:** `php backend/api/reset-db.php --go --demo && php herramientas/datos_prueba.php`
 (crea además la tienda `papeleriaroma` desde la API de plataforma y en las 3 tiendas: compras, traspasos, merma,
@@ -105,15 +143,15 @@ Cada suite de API necesita una BD recién reiniciada. Para agregar casos de aisl
 ## Despliegue
 **Cambios de base:** todo cambio a `schema.sql` lleva su entrada en `lib/Migraciones.php` (idempotente, solo
 agrega) y su renglón en la tabla de DESPLIEGUE-GODADDY.md; `esquema_test` falla si no coinciden. En el servidor
-se aplican con `api/migrar.php`.
+se aplican con `api/migrar.php` (consola: `php migrar.php --go`; navegador: `?clave=` = `migrar_clave` de
+`config.local.php`).
 `cd frontend && npm run build` → `php herramientas/empaquetar.php` → subir `deploy-godaddy/public_html/`.
 Guía completa: [DESPLIEGUE-GODADDY.md](DESPLIEGUE-GODADDY.md). Nunca se suben `reset-db.php`, `backend/tests/`,
 `config.local.php` local ni `credenciales.local.txt` (el empaquetador lo verifica).
 
 ## Limitaciones conocidas / ideas
 - Kits: se expanden a componentes en venta, cancelación, devolución y cambio; en compras, traspasos y apartados se
-  mueve el propio kit.
+  mueve el propio kit. Al vender no se bloquea lo apartado (existencias negativas permitidas); el POS solo avisa.
 - Las comisiones de terminal (`terminales.comision_pct`) son informativas: el cobro entra completo a la cuenta.
 - Facturación CFDI sigue pendiente (requiere PAC).
-- No hay migraciones: el esquema v2 es la versión inicial; cambios futuros necesitan su script de migración.
 - Documentación histórica (MultiTienda/LEVOTEK) en `docs/historial/`.

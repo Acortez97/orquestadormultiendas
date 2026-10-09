@@ -6,8 +6,9 @@ class AuthController
 {
     /** Hash de relleno: se verifica aunque el usuario no exista, para no revelar por tiempo de respuesta si existe */
     const HASH_RELLENO = '$2y$12$Ro0kh9jgO3utgPMQ5tjynOtyWu7ifolgOOgJBon1NLOxiQ0jTeWFG';
-    const MAX_FALLOS_LOGIN = 5;    // por correo, en la ventana
+    const MAX_FALLOS_LOGIN = 5;    // por correo DESDE la misma IP, en la ventana (otro equipo no puede bloquear al usuario)
     const MAX_FALLOS_IP = 20;      // por IP, en la ventana
+    const MAX_FALLOS_CORREO = 50;  // por correo desde cualquier IP (ataque repartido), en la ventana
     const VENTANA_MIN = 15;
 
     /** Datos de sesion para el front: usuario + permisos efectivos + tienda */
@@ -19,7 +20,8 @@ class AuthController
         $data['soporte'] = $soporte;           // superadmin operando como tienda
         if ($soporte) $data['rol'] = 'admin_tienda';
         $data['tienda'] = $emp ? ['nombre' => $emp['nombre'], 'slug' => $emp['slug'], 'logo_url' => $emp['logo_url'],
-                                   'aviso_pago' => $emp['aviso_pago'] ?? null] : null;
+                                   'aviso_pago' => $emp['aviso_pago'] ?? null, 'iva' => (float) ($emp['iva'] ?? 0.16),
+                                   'color' => $emp['color'] ?? null] : null;
         return $data;
     }
 
@@ -33,10 +35,12 @@ class AuthController
 
         // Bloqueo temporal por intentos fallidos
         $f = Db::one(
-            'SELECT SUM(login = ?) por_login, COUNT(*) por_ip FROM login_intentos
-             WHERE exito = 0 AND created_at > (NOW() - INTERVAL ' . self::VENTANA_MIN . ' MINUTE) AND (login = ? OR ip = ?)',
-            [$login, $login, $ip]);
-        if ((int) $f['por_login'] >= self::MAX_FALLOS_LOGIN || (int) $f['por_ip'] >= self::MAX_FALLOS_IP) {
+            "SELECT COALESCE(SUM(login = ? AND ip = ?), 0) por_login, COALESCE(SUM(ip = ?), 0) por_ip, COALESCE(SUM(login = ?), 0) por_correo
+             FROM login_intentos
+             WHERE exito = 0 AND created_at > (NOW() - INTERVAL " . self::VENTANA_MIN . " MINUTE) AND (login = ? OR ip = ?) AND login NOT LIKE 'pin:%'",
+            [$login, $ip, $ip, $login, $login, $ip]);
+        if ((int) $f['por_login'] >= self::MAX_FALLOS_LOGIN || (int) $f['por_ip'] >= self::MAX_FALLOS_IP
+            || (int) $f['por_correo'] >= self::MAX_FALLOS_CORREO) {
             throw new ApiError('Demasiados intentos fallidos. Espera ' . self::VENTANA_MIN . ' minutos e intenta de nuevo.', 429, 'TOO_MANY_ATTEMPTS');
         }
 
