@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
-import Swal from 'sweetalert2';
+import Swal from '../../utils/swal';
 import Modal from './Modal';
 import { cuentasClienteApi, almacenesApi } from '../../services/api/endpoints';
 import { useAuth } from '../../contexts/AuthContext';

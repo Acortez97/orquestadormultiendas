@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import clsx from 'clsx';
-import Swal from 'sweetalert2';
+import Swal from '../../utils/swal';
 import { Download, FileSpreadsheet, CircleCheck, TriangleAlert, Upload } from 'lucide-react';
 import Modal from './Modal';
 import { almacenesApi, importarApi } from '../../services/api/endpoints';

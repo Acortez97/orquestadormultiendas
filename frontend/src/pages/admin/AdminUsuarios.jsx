@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import Swal from 'sweetalert2';
+import Swal from '../../utils/swal';
 import { PlusIcon } from '@heroicons/react/24/outline';
 import DataTable from '../../components/common/DataTable';
 import Modal from '../../components/common/Modal';

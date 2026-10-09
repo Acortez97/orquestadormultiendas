@@ -1,4 +1,4 @@
-import Swal from 'sweetalert2';
+import Swal from './swal';
 
 // Aviso discreto abajo de la pantalla (no bloquea): «Guardado», «Pago registrado»…
 const toast = Swal.mixin({

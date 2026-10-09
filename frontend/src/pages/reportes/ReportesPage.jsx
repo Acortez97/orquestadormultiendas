@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ChartBarIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import Swal from 'sweetalert2';
+import Swal from '../../utils/swal';
 import { reportesApi, almacenesApi, empleadosApi, proveedoresApi } from '../../services/api/endpoints';
 import { useAuth } from '../../contexts/AuthContext';
 import DataTable from '../../components/common/DataTable';

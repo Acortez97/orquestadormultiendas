@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Swal from 'sweetalert2';
+import Swal from '../../utils/swal';
 import { PlusIcon, EllipsisHorizontalIcon } from '@heroicons/react/24/outline';
 import Modal from '../../components/common/Modal';
 import SelectorColor, { colorLegible } from '../../components/common/SelectorColor';
@@ -39,6 +39,16 @@ export default function AdminTiendas() {
   // ---- alta ----
   const abrirNueva = () => { setForm({ ...nueva, modulos: catalogo.map((m) => m.clave) }); setModal('nueva'); };
   const crear = async () => {
+    // El subdominio es permanente (empresas.slug es inmutable): se confirma antes de crear
+    if (form.slug) {
+      const c = await Swal.fire({
+        icon: 'warning', title: 'Confirma el subdominio',
+        html: `<p>Los correos de acceso de esta tienda serán:</p><p><b>usuario@${form.slug}.${dominioBase || 'levotek.com'}</b></p>`
+            + '<p class="text-sm">El subdominio <b>no se podrá cambiar</b> después.</p>',
+        showCancelButton: true, confirmButtonText: 'Crear tienda', cancelButtonText: 'Corregir',
+      });
+      if (!c.isConfirmed) return;
+    }
     try {
       const r = await plataformaApi.crearTienda({
         ...form, iva: Number(form.iva) / 100,
@@ -220,7 +230,9 @@ export default function AdminTiendas() {
             </p>
           )}
         </div>
-        <button className="btn-accent bg-plataforma" onClick={abrirNueva}><PlusIcon className="h-5 w-5" />Nueva tienda</button>
+        <button className="btn-accent bg-plataforma" onClick={abrirNueva} disabled={!catalogo.length}>
+          <PlusIcon className="h-5 w-5" />{catalogo.length ? 'Nueva tienda' : 'Cargando…'}
+        </button>
       </div>
       {loading && <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="skeleton h-56 rounded-[14px]" />)}</div>}
       {!loading && !rows.length && <p className="card p-8 text-center text-slate-600">Aún no hay tiendas.</p>}

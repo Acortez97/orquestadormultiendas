@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BanknotesIcon } from '@heroicons/react/24/outline';
-import Swal from 'sweetalert2';
+import Swal from '../../utils/swal';
 import DataTable from '../../components/common/DataTable';
 import { useAuth } from '../../contexts/AuthContext';
 import { comisionesApi, empleadosApi } from '../../services/api/endpoints';

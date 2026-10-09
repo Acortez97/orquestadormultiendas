@@ -125,4 +125,14 @@ $mov = d(api('GET', "/finanzas/bancos/$C1/movimientos", null, $t));
 check('El libro de la cuenta muestra terminal y tienda de cada cobro', (bool) array_filter($mov['movimientos'], fn($m) => $m['terminal'] === 'Terminal 1' && $m['almacen'] === 'Tienda principal'));
 check('Sin ids internos en el corte', !idsCrudos($pv), implode(',', array_slice(idsCrudos($pv), 0, 3)));
 
+seccion('Cajero sin permiso de finanzas: elige cuenta y terminal, sin ver saldos');
+[$tCaj] = entrar('cajero1@demo1.levotek.com', $c['cajero1@demo1.levotek.com']);
+$bc = d(api('GET', '/finanzas/bancos', null, $tCaj));
+check('El cajero lista las cuentas para cobrar', count($bc) === count($cuentas) && isset($bc[0]['_id'], $bc[0]['nombre']));
+check('Sin saldo, numero de cuenta ni CLABE', !array_filter($bc, fn($b) => array_intersect_key($b, array_flip(['saldo_actual', 'cuenta', 'clabe']))));
+$tc = d(api('GET', '/finanzas/terminales', null, $tCaj));
+check('El cajero lista las terminales con su cuenta', count($tc) >= 2 && isset($tc[0]['id_banco']['nombre']));
+check('Sin comision ni proveedor de la terminal', !array_filter($tc, fn($x) => array_intersect_key($x, array_flip(['comision_pct', 'proveedor']))));
+check('El admin (con finanzas) si recibe saldos', isset(d(api('GET', '/finanzas/bancos', null, $t))[0]['saldo_actual']));
+
 fin();

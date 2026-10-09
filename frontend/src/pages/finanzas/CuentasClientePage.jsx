@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import Swal from 'sweetalert2';
+import Swal from '../../utils/swal';
 import DataTable from '../../components/common/DataTable';
 import EstadoCuentaCliente from '../../components/common/EstadoCuentaCliente';
 import { cuentasClienteApi } from '../../services/api/endpoints';

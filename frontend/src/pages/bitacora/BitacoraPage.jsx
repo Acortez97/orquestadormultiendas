@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import Swal from 'sweetalert2';
+import Swal from '../../utils/swal';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import DataTable from '../../components/common/DataTable';
 import { auditApi } from '../../services/api/endpoints';

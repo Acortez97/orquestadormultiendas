@@ -56,7 +56,7 @@ class AuthController
         }
         $valido = password_verify($pass, $u['password'] ?? self::HASH_RELLENO) && $u && $u['is_active'] === 'Si';
         Db::run('INSERT INTO login_intentos (login, ip, exito) VALUES (?,?,?)', [$login, $ip, $valido ? 1 : 0]);
-        if (!$valido) throw new ApiError('Correo o contrasena incorrectos', 401, 'UNAUTHORIZED');
+        if (!$valido) throw new ApiError('Correo o contraseña incorrectos', 401, 'UNAUTHORIZED');
         if ($emp && $emp['is_active'] !== 'Si') throw new ApiError('Cuenta suspendida, contacta al administrador', 403, 'SUSPENDED');
 
         Db::run('UPDATE users SET ultimo_acceso = NOW() WHERE id = ?', [(int) $u['id']]);
@@ -87,17 +87,17 @@ class AuthController
         $b = Http::bodyCrudo();
         $cur = (string) ($b['currentPassword'] ?? '');
         $new = (string) ($b['newPassword'] ?? '');
-        if (strlen($new) < Usuarios::PASS_MIN) throw new ApiError('La nueva contrasena debe tener al menos ' . Usuarios::PASS_MIN . ' caracteres', 400, 'VALIDATION');
-        if ($new === $cur) throw new ApiError('La nueva contrasena debe ser distinta a la actual', 400, 'VALIDATION');
+        if (strlen($new) < Usuarios::PASS_MIN) throw new ApiError('La nueva contraseña debe tener al menos ' . Usuarios::PASS_MIN . ' caracteres', 400, 'VALIDATION');
+        if ($new === $cur) throw new ApiError('La nueva contraseña debe ser distinta a la actual', 400, 'VALIDATION');
 
         $u = Db::one('SELECT * FROM users WHERE id = ?', [(int) $ctx['user']['id']]);
-        if (!password_verify($cur, $u['password'])) throw new ApiError('Contrasena actual incorrecta', 400, 'VALIDATION');
+        if (!password_verify($cur, $u['password'])) throw new ApiError('Contraseña actual incorrecta', 400, 'VALIDATION');
 
         Db::run('UPDATE users SET password = ?, debe_cambiar_password = 0, token_version = token_version + 1 WHERE id = ?',
             [password_hash($new, PASSWORD_BCRYPT), (int) $u['id']]);
         $token = Jwt::encode(['u' => Tenant::encSesion((int) $u['id']), 'v' => (int) $u['token_version'] + 1],
             $ctx['cfg']['jwt_secret'], $ctx['cfg']['jwt_expira']);
-        Http::ok(['token' => $token], 'Contrasena actualizada exitosamente');
+        Http::ok(['token' => $token], 'Contraseña actualizada exitosamente');
     }
 
     // ===== Usuarios de la tienda (solo admin_tienda; ver Permisos 'admin:usuarios') =====
@@ -147,8 +147,8 @@ class AuthController
     public static function resetPassword(array $p, array $ctx): void
     {
         Usuarios::resetPassword(Tenant::id(), (int) $p['id'], (string) (Http::bodyCrudo()['newPassword'] ?? ''), true, $ctx['user']['id']);
-        Ledger::audit($ctx, 'reset_password', 'usuario', (int) $p['id'], 'Contrasena restablecida');
-        Http::ok(null, 'Contrasena restablecida');
+        Ledger::audit($ctx, 'reset_password', 'usuario', (int) $p['id'], 'Contraseña restablecida');
+        Http::ok(null, 'Contraseña restablecida');
     }
 
     private static function fila(array $u): array

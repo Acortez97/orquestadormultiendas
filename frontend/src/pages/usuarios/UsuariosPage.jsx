@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import Swal from 'sweetalert2';
+import Swal from '../../utils/swal';
 import { PlusIcon } from '@heroicons/react/24/outline';
 import DataTable from '../../components/common/DataTable';
 import Modal from '../../components/common/Modal';
@@ -17,6 +17,8 @@ export default function UsuariosPage() {
   const [modulos, setModulos] = useState([]);
   const [dominio, setDominio] = useState('');
   const [almacenes, setAlmacenes] = useState([]);
+  // El formulario necesita los modulos y el dominio de la tienda: hasta tenerlos no se puede abrir
+  const [listo, setListo] = useState(false);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(vacio);
@@ -28,8 +30,13 @@ export default function UsuariosPage() {
   };
   useEffect(() => {
     cargar();
-    usuariosTiendaApi.modulos().then((r) => { setModulos(r.data.modulos || []); setDominio(r.data.dominio || ''); });
-    almacenesApi.listar().then((r) => setAlmacenes(r.data || []));
+    Promise.all([usuariosTiendaApi.modulos(), almacenesApi.listar()])
+      .then(([m, a]) => {
+        setModulos(m.data.modulos || []); setDominio(m.data.dominio || '');
+        setAlmacenes(a.data || []);
+        setListo(true);
+      })
+      .catch((e) => Swal.fire('Error', `No se pudieron cargar los módulos de la tienda: ${e.message}`, 'error'));
   }, []);
 
   const abrir = (u) => {
@@ -77,7 +84,7 @@ export default function UsuariosPage() {
     { key: 'ultimo_acceso', label: 'Último acceso', render: (u) => u.ultimo_acceso || '—' },
     { key: 'acc', label: '', noExport: true, render: (u) => (u.rol !== 'usuario' || u._id === user?._id ? null : (
       <div className="flex gap-2">
-        <button className="btn-ghost text-sm" onClick={() => abrir(u)}>Editar</button>
+        <button className="btn-ghost text-sm" onClick={() => abrir(u)} disabled={!listo}>Editar</button>
         <button className="btn-ghost text-sm" onClick={() => resetear(u)}>Contraseña</button>
         <button className="btn-ghost text-sm text-rose-600" onClick={() => alternarActivo(u)}>{u.is_active === 'Si' ? 'Desactivar' : 'Reactivar'}</button>
       </div>
@@ -89,9 +96,14 @@ export default function UsuariosPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Usuarios y permisos</h1>
-          <p className="text-sm text-slate-500">Los correos de acceso terminan en <b>@{dominio}</b>. Los administradores los gestiona el administrador general.</p>
+          <p className="text-sm text-slate-500">
+            {dominio && <>Los correos de acceso terminan en <b>@{dominio}</b>. </>}
+            Los administradores los gestiona el administrador general.
+          </p>
         </div>
-        <button className="btn-primary" onClick={() => abrir(null)}><PlusIcon className="w-4 h-4" /> Nuevo usuario</button>
+        <button className="btn-primary" onClick={() => abrir(null)} disabled={!listo}>
+          <PlusIcon className="w-4 h-4" /> {listo ? 'Nuevo usuario' : 'Cargando…'}
+        </button>
       </div>
       <DataTable columns={columns} data={rows} loading={loading} empty="Sin usuarios" exportName="Usuarios" exportTitle="Usuarios" />
 

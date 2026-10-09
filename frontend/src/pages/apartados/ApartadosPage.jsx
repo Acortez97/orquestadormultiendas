@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { PlusIcon, TrashIcon, InformationCircleIcon, EyeIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
-import Swal from 'sweetalert2';
+import Swal from '../../utils/swal';
 import DataTable from '../../components/common/DataTable';
 import Modal from '../../components/common/Modal';
 import ArticuloAutocomplete from '../../components/common/ArticuloAutocomplete';

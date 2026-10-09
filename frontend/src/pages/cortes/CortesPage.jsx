@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { EyeIcon, PrinterIcon } from '@heroicons/react/24/outline';
-import Swal from 'sweetalert2';
+import Swal from '../../utils/swal';
 import { cortesApi, almacenesApi } from '../../services/api/endpoints';
 import { useAuth } from '../../contexts/AuthContext';
 import { printCorte } from '../../utils/corte';

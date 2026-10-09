@@ -72,7 +72,7 @@ class Usuarios
         $nombre = trim((string) ($b['nombre'] ?? ''));
         $pass = (string) ($b['password'] ?? '');
         if ($nombre === '') throw new ApiError('El nombre es obligatorio', 400, 'VALIDATION');
-        if (strlen($pass) < self::PASS_MIN) throw new ApiError('La contrasena debe tener al menos ' . self::PASS_MIN . ' caracteres', 400, 'VALIDATION');
+        if (strlen($pass) < self::PASS_MIN) throw new ApiError('La contraseña debe tener al menos ' . self::PASS_MIN . ' caracteres', 400, 'VALIDATION');
 
         $rol = (string) ($b['rol'] ?? 'usuario');
         if (!in_array($rol, $rolesPermitidos, true)) throw new ApiError('Rol no permitido', 400, 'VALIDATION');
@@ -171,7 +171,7 @@ class Usuarios
     {
         $u = self::obtener($idEmpresa, $id);
         if ($porAdminTienda && ($u['rol'] !== 'usuario' || $id === $idActor)) throw new ApiError('Usuario no encontrado', 404, 'NOT_FOUND');
-        if (strlen($nueva) < self::PASS_MIN) throw new ApiError('La contrasena debe tener al menos ' . self::PASS_MIN . ' caracteres', 400, 'VALIDATION');
+        if (strlen($nueva) < self::PASS_MIN) throw new ApiError('La contraseña debe tener al menos ' . self::PASS_MIN . ' caracteres', 400, 'VALIDATION');
         Db::run('UPDATE users SET password = ?, debe_cambiar_password = 1, token_version = token_version + 1 WHERE id = ? AND id_empresa = ?',
             [password_hash($nueva, PASSWORD_BCRYPT), $id, $idEmpresa]);
     }

@@ -108,7 +108,7 @@ class PlataformaController
         $pass = (string) ($b['admin_password'] ?? '');
         $generada = $pass === '';
         if ($generada) $pass = Seeder::passwordAleatorio();
-        if (strlen($pass) < Usuarios::PASS_MIN) throw new ApiError('La contrasena debe tener al menos ' . Usuarios::PASS_MIN . ' caracteres', 400, 'VALIDATION');
+        if (strlen($pass) < Usuarios::PASS_MIN) throw new ApiError('La contraseña debe tener al menos ' . Usuarios::PASS_MIN . ' caracteres', 400, 'VALIDATION');
         $iva = isset($b['iva']) ? (float) $b['iva'] : 0.16;
         if ($iva < 0 || $iva >= 1) throw new ApiError('El IVA debe ser una fraccion, p. ej. 0.16', 400, 'VALIDATION');
 
@@ -383,7 +383,7 @@ class PlataformaController
         if ($generada) $nueva = Seeder::passwordAleatorio();
         Usuarios::resetPassword((int) $u['id_empresa'], (int) $u['id'], $nueva, false, null);
         Ledger::audit($ctx, 'reset_password', 'usuario', $u['id'], $u['login']);
-        Http::ok(['password_generada' => $generada ? $nueva : null], 'Contrasena restablecida; debe cambiarla al entrar');
+        Http::ok(['password_generada' => $generada ? $nueva : null], 'Contraseña restablecida; debe cambiarla al entrar');
     }
 
     // ===================== Bitacora global =====================

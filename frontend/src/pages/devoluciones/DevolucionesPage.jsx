@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { MagnifyingGlassIcon, TrashIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
-import Swal from 'sweetalert2';
+import Swal from '../../utils/swal';
 import DataTable from '../../components/common/DataTable';
 import ArticuloAutocomplete from '../../components/common/ArticuloAutocomplete';
 import { VariantesInline } from '../../components/common/MatrizColorTalla';

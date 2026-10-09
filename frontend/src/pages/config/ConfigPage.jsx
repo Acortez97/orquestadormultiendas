@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import Swal from 'sweetalert2';
+import Swal from '../../utils/swal';
 import { Cog6ToothIcon, BuildingOffice2Icon, UserCircleIcon, SwatchIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../../contexts/AuthContext';
 import { configApi } from '../../services/api/endpoints';

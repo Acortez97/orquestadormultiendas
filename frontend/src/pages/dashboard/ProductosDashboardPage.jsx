@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Squares2X2Icon, ArrowPathIcon } from '@heroicons/react/24/outline';
-import Swal from 'sweetalert2';
+import Swal from '../../utils/swal';
 import { reportesApi, almacenesApi } from '../../services/api/endpoints';
 import ProductosDashboardView from '../../components/common/ProductosDashboardView';
 

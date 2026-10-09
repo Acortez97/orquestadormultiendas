@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import PropTypes from 'prop-types';
-import Swal from 'sweetalert2';
+import Swal from '../../utils/swal';
 import { ImageUp, Trash2 } from 'lucide-react';
 import { archivoALogo, invalidarLogos } from '../../utils/logos';
 import { aviso } from '../../utils/avisos';

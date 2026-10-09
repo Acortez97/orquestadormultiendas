@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FunnelIcon } from '@heroicons/react/24/outline';
-import Swal from 'sweetalert2';
+import Swal from '../../utils/swal';
 import DataTable from '../../components/common/DataTable';
 import PanelDetalle from '../../components/common/PanelDetalle';
 import { ventasApi, almacenesApi, clientesApi } from '../../services/api/endpoints';

@@ -124,12 +124,12 @@ if ($cfg['debug']) {
 }
 
 if ($cli) {
-    echo "\nInstalacion completa. Todos deben cambiar su contrasena al primer acceso.\n";
+    echo "\nInstalacion completa. Todos deben cambiar su contraseña al primer acceso.\n";
     echo $archivoCred ? "Credenciales guardadas en: $archivoCred\n" : '';
     if (!$archivoCred) foreach ($cred as [$quien, $login, $pass]) echo str_pad($quien, 28) . str_pad($login, 40) . $pass . "\n";
 } else {
     echo '<hr><h2>✅ Instalacion completa</h2><p>Copia estas credenciales ahora: <b>no se volveran a mostrar</b>. '
-       . 'Todos deben cambiar su contrasena al primer acceso.</p><table cellpadding="6" style="border-collapse:collapse">';
+       . 'Todos deben cambiar su contraseña al primer acceso.</p><table cellpadding="6" style="border-collapse:collapse">';
     foreach ($cred as [$quien, $login, $pass]) {
         echo '<tr><td>' . htmlspecialchars($quien) . '</td><td><code>' . htmlspecialchars($login) . '</code></td><td><code>'
            . htmlspecialchars($pass) . '</code></td></tr>';

@@ -132,7 +132,7 @@ php backend/tests/loginid_test.php                                              
 php backend/api/reset-db.php --go --demo && php backend/tests/auth_test.php            # 59  login, permisos, usuarios
 php backend/api/reset-db.php --go --demo && php backend/tests/aislamiento_api_test.php # 200 flujo completo + ataques
 php backend/api/reset-db.php --go --demo && php backend/tests/plataforma_test.php      # 64  panel de plataforma
-php backend/api/reset-db.php --go --demo && php backend/tests/cobros_test.php          # 44  cobros, cuentas, caja y corte
+php backend/api/reset-db.php --go --demo && php backend/tests/cobros_test.php          # 49  cobros, cuentas, caja y corte
 php backend/api/reset-db.php --go --demo && php backend/tests/correcciones_test.php    # 146 regresión: revisión 2026-10-08, rediseño, carga masiva y logos
 cd frontend && npm run build                                                           # JS principal ~323 KB
 ```

@@ -143,7 +143,13 @@ class FinanzasController
 
     public static function terminalesListar(array $p, array $ctx): void
     {
-        Http::ok(array_map([self::class, 'fmtTerminal'], self::terminales(null, ($_GET['is_active'] ?? '') === 'todos')));
+        $lista = array_map([self::class, 'fmtTerminal'], self::terminales(null, ($_GET['is_active'] ?? '') === 'todos'));
+        // Sin permiso de finanzas: solo lo necesario para elegir la terminal (sin comision ni proveedor)
+        if (!Permisos::tiene($ctx, 'finanzas.ver')) {
+            $lista = array_map(fn($t) => ['_id' => $t['_id'], 'nombre' => $t['nombre'], 'id_banco' => $t['id_banco'],
+                                          'is_active' => $t['is_active']], $lista);
+        }
+        Http::ok($lista);
     }
 
     private static function datosTerminal(array $b, ?array $actual = null): array
